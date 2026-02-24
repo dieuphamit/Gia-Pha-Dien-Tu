@@ -179,30 +179,46 @@ export async function updatePerson(
     handle: string,
     fields: {
         displayName?: string;
+        gender?: number;
+        surname?: string | null;
+        firstName?: string | null;
+        nickName?: string | null;
         birthYear?: number | null;
         deathYear?: number | null;
         isLiving?: boolean;
         phone?: string | null;
         email?: string | null;
+        zalo?: string | null;
+        facebook?: string | null;
         currentAddress?: string | null;
         hometown?: string | null;
         occupation?: string | null;
+        company?: string | null;
         education?: string | null;
+        biography?: string | null;
         notes?: string | null;
     }
 ): Promise<void> {
     // Convert camelCase → snake_case for DB
     const dbFields: Record<string, unknown> = {};
     if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
+    if (fields.gender !== undefined) dbFields.gender = fields.gender;
+    if (fields.surname !== undefined) dbFields.surname = fields.surname;
+    if (fields.firstName !== undefined) dbFields.first_name = fields.firstName;
+    if (fields.nickName !== undefined) dbFields.nick_name = fields.nickName;
     if (fields.birthYear !== undefined) dbFields.birth_year = fields.birthYear;
     if (fields.deathYear !== undefined) dbFields.death_year = fields.deathYear;
     if (fields.isLiving !== undefined) dbFields.is_living = fields.isLiving;
     if (fields.phone !== undefined) dbFields.phone = fields.phone;
     if (fields.email !== undefined) dbFields.email = fields.email;
+    if (fields.zalo !== undefined) dbFields.zalo = fields.zalo;
+    if (fields.facebook !== undefined) dbFields.facebook = fields.facebook;
     if (fields.currentAddress !== undefined) dbFields.current_address = fields.currentAddress;
     if (fields.hometown !== undefined) dbFields.hometown = fields.hometown;
     if (fields.occupation !== undefined) dbFields.occupation = fields.occupation;
+    if (fields.company !== undefined) dbFields.company = fields.company;
     if (fields.education !== undefined) dbFields.education = fields.education;
+    if (fields.biography !== undefined) dbFields.biography = fields.biography;
     if (fields.notes !== undefined) dbFields.notes = fields.notes;
     dbFields.updated_at = new Date().toISOString();
 
