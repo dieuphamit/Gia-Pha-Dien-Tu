@@ -195,10 +195,10 @@ export async function updatePerson(
         occupation?: string | null;
         company?: string | null;
         education?: string | null;
-        biography?: string | null;
         notes?: string | null;
+        biography?: string | null;
     }
-): Promise<void> {
+): Promise<{ error: string | null }> {
     // Convert camelCase → snake_case for DB
     const dbFields: Record<string, unknown> = {};
     if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
@@ -218,16 +218,27 @@ export async function updatePerson(
     if (fields.occupation !== undefined) dbFields.occupation = fields.occupation;
     if (fields.company !== undefined) dbFields.company = fields.company;
     if (fields.education !== undefined) dbFields.education = fields.education;
-    if (fields.biography !== undefined) dbFields.biography = fields.biography;
     if (fields.notes !== undefined) dbFields.notes = fields.notes;
-    dbFields.updated_at = new Date().toISOString();
+    if (fields.biography !== undefined) dbFields.biography = fields.biography;
 
-    const { error } = await supabase
+    console.log('[updatePerson] handle:', handle, 'fields:', JSON.stringify(dbFields));
+
+    const { data, error } = await supabase
         .from('people')
         .update(dbFields)
-        .eq('handle', handle);
+        .eq('handle', handle)
+        .select('handle');
 
-    if (error) console.error('Failed to update person:', error.message);
+    console.log('[updatePerson] result:', { data, error: error?.message });
+
+    if (error) {
+        console.error('Failed to update person:', error.message, error.details, error.hint);
+        return { error: error.message };
+    }
+    if (!data || data.length === 0) {
+        return { error: 'Không thể cập nhật. Bạn cần đăng nhập để có quyền sửa.' };
+    }
+    return { error: null };
 }
 
 /** Add a new person to the tree */
@@ -275,6 +286,136 @@ export async function deletePerson(handle: string): Promise<{ error: string | nu
     if (error) {
         console.error('Failed to delete person:', error.message);
         return { error: error.message };
+    }
+    return { error: null };
+}
+
+/** Fetch a single family by handle */
+export async function fetchFamily(handle: string): Promise<TreeFamily | null> {
+    const { data, error } = await supabase
+        .from('families')
+        .select('handle, father_handle, mother_handle, children')
+        .eq('handle', handle)
+        .single();
+    if (error || !data) return null;
+    return dbRowToTreeFamily(data as Record<string, unknown>);
+}
+
+/** Helper: update + verify rows affected */
+async function verifiedUpdate(
+    table: 'people' | 'families',
+    fields: Record<string, unknown>,
+    eqField: string,
+    eqValue: string,
+): Promise<{ error: string | null }> {
+    console.log(`[verifiedUpdate] ${table} where ${eqField}=${eqValue}`, JSON.stringify(fields));
+
+    const { data, error } = await supabase
+        .from(table)
+        .update(fields)
+        .eq(eqField, eqValue)
+        .select(eqField);
+
+    console.log(`[verifiedUpdate] ${table} result:`, { data, error: error?.message });
+
+    if (error) {
+        console.error(`Update ${table} failed:`, error.message, error.details, error.hint);
+        return { error: error.message };
+    }
+    if (!data || data.length === 0) {
+        return { error: `Không thể cập nhật ${table}. Bạn cần đăng nhập để có quyền sửa.` };
+    }
+    return { error: null };
+}
+
+/** Add person as child to a parent family */
+export async function addPersonAsChild(personHandle: string, familyHandle: string): Promise<{ error: string | null }> {
+    const fam = await fetchFamily(familyHandle);
+    if (!fam) return { error: 'Không tìm thấy gia đình ' + familyHandle };
+
+    if (!fam.children.includes(personHandle)) {
+        const r1 = await verifiedUpdate('families', { children: [...fam.children, personHandle] }, 'handle', familyHandle);
+        if (r1.error) return r1;
+    }
+
+    const { data: personData } = await supabase
+        .from('people')
+        .select('parent_families')
+        .eq('handle', personHandle)
+        .single();
+    const currentPF = (personData?.parent_families as string[]) || [];
+    if (!currentPF.includes(familyHandle)) {
+        const r2 = await verifiedUpdate('people', { parent_families: [...currentPF, familyHandle] }, 'handle', personHandle);
+        if (r2.error) return r2;
+    }
+    return { error: null };
+}
+
+/** Remove person from a parent family */
+export async function removePersonFromParentFamily(personHandle: string, familyHandle: string): Promise<{ error: string | null }> {
+    const fam = await fetchFamily(familyHandle);
+    if (fam) {
+        const r1 = await verifiedUpdate('families', { children: fam.children.filter(c => c !== personHandle) }, 'handle', familyHandle);
+        if (r1.error) return r1;
+    }
+    const { data: personData } = await supabase
+        .from('people')
+        .select('parent_families')
+        .eq('handle', personHandle)
+        .single();
+    if (personData) {
+        const currentPF = (personData.parent_families as string[]) || [];
+        const r2 = await verifiedUpdate('people', { parent_families: currentPF.filter(pf => pf !== familyHandle) }, 'handle', personHandle);
+        if (r2.error) return r2;
+    }
+    return { error: null };
+}
+
+/** Add person as spouse (cha/mẹ) to a family */
+export async function addPersonAsSpouse(
+    personHandle: string,
+    familyHandle: string,
+    role: 'father' | 'mother'
+): Promise<{ error: string | null }> {
+    const fam = await fetchFamily(familyHandle);
+    if (!fam) return { error: 'Không tìm thấy gia đình ' + familyHandle };
+
+    const field = role === 'father' ? 'father_handle' : 'mother_handle';
+    const r1 = await verifiedUpdate('families', { [field]: personHandle }, 'handle', familyHandle);
+    if (r1.error) return r1;
+
+    const { data: personData } = await supabase
+        .from('people')
+        .select('families')
+        .eq('handle', personHandle)
+        .single();
+    const currentFam = (personData?.families as string[]) || [];
+    if (!currentFam.includes(familyHandle)) {
+        const r2 = await verifiedUpdate('people', { families: [...currentFam, familyHandle] }, 'handle', personHandle);
+        if (r2.error) return r2;
+    }
+    return { error: null };
+}
+
+/** Remove person from a spouse family */
+export async function removePersonFromSpouseFamily(
+    personHandle: string,
+    familyHandle: string,
+    role: 'father' | 'mother'
+): Promise<{ error: string | null }> {
+    const field = role === 'father' ? 'father_handle' : 'mother_handle';
+    const r1 = await verifiedUpdate('families', { [field]: null }, 'handle', familyHandle);
+    if (r1.error) return r1;
+
+    const { data: personData } = await supabase
+        .from('people')
+        .select('families')
+        .eq('handle', personHandle)
+        .single();
+    if (personData) {
+        const currentFam = (personData.families as string[]) || [];
+        const r2 = await verifiedUpdate('people', { families: currentFam.filter(f => f !== familyHandle) }, 'handle', personHandle);
+        if (r2.error) return r2;
     }
     return { error: null };
 }

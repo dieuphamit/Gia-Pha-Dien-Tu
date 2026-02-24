@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS people (
     company TEXT,
     education TEXT,
     nick_name TEXT,
+    biography TEXT,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -159,6 +160,24 @@ CREATE INDEX IF NOT EXISTS idx_comments_person ON comments(person_handle);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
+-- ║  4b. NOTIFICATIONS (thông báo)                           ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL DEFAULT 'SYSTEM',
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    link_url TEXT,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+
+
+-- ╔══════════════════════════════════════════════════════════╗
 -- ║  5. ROW LEVEL SECURITY (RLS)                            ║
 -- ╚══════════════════════════════════════════════════════════╝
 
@@ -204,6 +223,13 @@ CREATE POLICY "owner or admin can delete comments" ON comments
         author_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
     );
+
+-- Notifications: user reads/updates own, admin inserts
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users read own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "authenticated can insert notifications" ON notifications
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Constraints
 ALTER TABLE comments ADD CONSTRAINT comments_content_length CHECK (char_length(content) BETWEEN 1 AND 2000);

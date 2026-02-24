@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ArrowLeft, User, Heart, Image, FileText, History, Lock, Phone, MapPin, Briefcase, GraduationCap, Tag, MessageCircle, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,12 +10,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+
 import { zodiacYear } from '@/lib/genealogy-types';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 import { useAuth } from '@/components/auth-provider';
-import { updatePerson } from '@/lib/supabase-data';
+import {
+    updatePerson,
+    addPersonAsChild,
+    removePersonFromParentFamily,
+    addPersonAsSpouse,
+    removePersonFromSpouseFamily,
+} from '@/lib/supabase-data';
+
+interface FamilyOption {
+    handle: string;
+    label: string;
+}
 
 interface EditForm {
     displayName: string;
@@ -49,6 +59,12 @@ export default function PersonProfilePage() {
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [relLoading, setRelLoading] = useState(false);
+    const [relError, setRelError] = useState('');
+    const [saveError, setSaveError] = useState('');
+    const [allFamilies, setAllFamilies] = useState<FamilyOption[]>([]);
+    const [selectedParentFamily, setSelectedParentFamily] = useState('');
+    const [selectedSpouseFamily, setSelectedSpouseFamily] = useState('');
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, surname: '', firstName: '', nickName: '',
         birthYear: '', deathYear: '', isLiving: true,
@@ -127,15 +143,38 @@ export default function PersonProfilePage() {
             biography: person.biography || '',
             notes: person.notes || '',
         });
+        setSelectedParentFamily('');
+        setSelectedSpouseFamily('');
+        loadFamilyOptions();
         setEditing(true);
+    };
+
+    const loadFamilyOptions = async () => {
+        const { supabase } = await import('@/lib/supabase');
+        const [{ data: fams }, { data: people }] = await Promise.all([
+            supabase.from('families').select('handle, father_handle, mother_handle, children').order('handle'),
+            supabase.from('people').select('handle, display_name'),
+        ]);
+        if (!fams) return;
+        const nameMap = new Map((people || []).map(p => [p.handle, p.display_name]));
+        setAllFamilies(fams.map(f => {
+            const parts: string[] = [];
+            if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
+            if (f.mother_handle) parts.push(nameMap.get(f.mother_handle) || f.mother_handle);
+            const label = parts.length > 0
+                ? `${f.handle} — ${parts.join(' & ')} (${(f.children as string[])?.length || 0} con)`
+                : `${f.handle} (chưa có thành viên)`;
+            return { handle: f.handle, label };
+        }));
     };
 
     const handleSave = async () => {
         if (!person) return;
         setSaving(true);
-        await updatePerson(handle, {
+        setSaveError('');
+        const result = await updatePerson(handle, {
             displayName: form.displayName || undefined,
-            gender: form.gender,
+            gender: Number(form.gender),
             surname: form.surname || null,
             firstName: form.firstName || null,
             nickName: form.nickName || null,
@@ -154,6 +193,11 @@ export default function PersonProfilePage() {
             biography: form.biography || null,
             notes: form.notes || null,
         });
+        if (result.error) {
+            setSaveError(result.error);
+            setSaving(false);
+            return;
+        }
         await fetchPerson();
         setSaving(false);
         setEditing(false);
@@ -161,6 +205,47 @@ export default function PersonProfilePage() {
 
     const set = (field: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setForm(prev => ({ ...prev, [field]: e.target.value }));
+    };
+
+    const handleAddParent = async () => {
+        if (!selectedParentFamily) return;
+        setRelLoading(true);
+        setRelError('');
+        console.log('[handleAddParent] Adding', handle, 'to family', selectedParentFamily);
+        const { error } = await addPersonAsChild(handle, selectedParentFamily);
+        console.log('[handleAddParent] Result:', error ? `ERROR: ${error}` : 'SUCCESS');
+        if (error) { setRelError(error); } else { setSelectedParentFamily(''); await fetchPerson(); }
+        setRelLoading(false);
+    };
+
+    const handleRemoveParent = async (fh: string) => {
+        setRelLoading(true);
+        setRelError('');
+        const { error } = await removePersonFromParentFamily(handle, fh);
+        if (error) { setRelError(error); }
+        await fetchPerson();
+        setRelLoading(false);
+    };
+
+    const handleAddSpouse = async () => {
+        if (!selectedSpouseFamily || !person) return;
+        setRelLoading(true);
+        setRelError('');
+        const role = person.gender === 2 ? 'mother' : 'father';
+        const { error } = await addPersonAsSpouse(handle, selectedSpouseFamily, role);
+        if (error) { setRelError(error); } else { setSelectedSpouseFamily(''); await fetchPerson(); }
+        setRelLoading(false);
+    };
+
+    const handleRemoveSpouse = async (fh: string) => {
+        if (!person) return;
+        setRelLoading(true);
+        setRelError('');
+        const role = person.gender === 2 ? 'mother' : 'father';
+        const { error } = await removePersonFromSpouseFamily(handle, fh, role);
+        if (error) { setRelError(error); }
+        await fetchPerson();
+        setRelLoading(false);
     };
 
     if (loading) {
@@ -221,7 +306,7 @@ export default function PersonProfilePage() {
                 )}
                 {isAdmin && editing && (
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                        <Button variant="outline" size="sm" onClick={() => { setEditing(false); setSaveError(''); }} disabled={saving}>
                             <X className="h-4 w-4 mr-2" />
                             Hủy
                         </Button>
@@ -252,23 +337,23 @@ export default function PersonProfilePage() {
                         </CardHeader>
                         <CardContent className="grid gap-4 md:grid-cols-2">
                             <div className="md:col-span-2">
-                                <Label>Họ tên đầy đủ</Label>
+                                <label className="text-sm font-medium leading-none">Họ tên đầy đủ</label>
                                 <Input value={form.displayName} onChange={set('displayName')} placeholder="Nguyễn Văn A" />
                             </div>
                             <div>
-                                <Label>Họ</Label>
+                                <label className="text-sm font-medium leading-none">Họ</label>
                                 <Input value={form.surname} onChange={set('surname')} placeholder="Nguyễn" />
                             </div>
                             <div>
-                                <Label>Tên</Label>
+                                <label className="text-sm font-medium leading-none">Tên</label>
                                 <Input value={form.firstName} onChange={set('firstName')} placeholder="Văn A" />
                             </div>
                             <div>
-                                <Label>Tên thường gọi</Label>
+                                <label className="text-sm font-medium leading-none">Tên thường gọi</label>
                                 <Input value={form.nickName} onChange={set('nickName')} placeholder="Tên gọi ở nhà" />
                             </div>
                             <div>
-                                <Label>Giới tính</Label>
+                                <label className="text-sm font-medium leading-none">Giới tính</label>
                                 <select
                                     value={form.gender}
                                     onChange={set('gender')}
@@ -280,15 +365,15 @@ export default function PersonProfilePage() {
                                 </select>
                             </div>
                             <div>
-                                <Label>Năm sinh</Label>
+                                <label className="text-sm font-medium leading-none">Năm sinh</label>
                                 <Input type="number" value={form.birthYear} onChange={set('birthYear')} placeholder="1950" />
                             </div>
                             <div>
-                                <Label>Năm mất</Label>
+                                <label className="text-sm font-medium leading-none">Năm mất</label>
                                 <Input type="number" value={form.deathYear} onChange={set('deathYear')} placeholder="Để trống nếu còn sống" />
                             </div>
                             <div>
-                                <Label>Trạng thái</Label>
+                                <label className="text-sm font-medium leading-none">Trạng thái</label>
                                 <div className="flex gap-2 mt-1">
                                     <Button
                                         type="button"
@@ -320,19 +405,19 @@ export default function PersonProfilePage() {
                         </CardHeader>
                         <CardContent className="grid gap-4 md:grid-cols-2">
                             <div>
-                                <Label>Điện thoại</Label>
+                                <label className="text-sm font-medium leading-none">Điện thoại</label>
                                 <Input value={form.phone} onChange={set('phone')} placeholder="0912345678" />
                             </div>
                             <div>
-                                <Label>Email</Label>
+                                <label className="text-sm font-medium leading-none">Email</label>
                                 <Input type="email" value={form.email} onChange={set('email')} placeholder="email@example.com" />
                             </div>
                             <div>
-                                <Label>Zalo</Label>
+                                <label className="text-sm font-medium leading-none">Zalo</label>
                                 <Input value={form.zalo} onChange={set('zalo')} placeholder="Số Zalo" />
                             </div>
                             <div>
-                                <Label>Facebook</Label>
+                                <label className="text-sm font-medium leading-none">Facebook</label>
                                 <Input value={form.facebook} onChange={set('facebook')} placeholder="Link Facebook" />
                             </div>
                         </CardContent>
@@ -347,11 +432,11 @@ export default function PersonProfilePage() {
                         </CardHeader>
                         <CardContent className="grid gap-4 md:grid-cols-2">
                             <div>
-                                <Label>Quê quán</Label>
+                                <label className="text-sm font-medium leading-none">Quê quán</label>
                                 <Input value={form.hometown} onChange={set('hometown')} placeholder="Tỉnh/huyện quê quán" />
                             </div>
                             <div>
-                                <Label>Nơi ở hiện tại</Label>
+                                <label className="text-sm font-medium leading-none">Nơi ở hiện tại</label>
                                 <Input value={form.currentAddress} onChange={set('currentAddress')} placeholder="Địa chỉ hiện tại" />
                             </div>
                         </CardContent>
@@ -366,15 +451,15 @@ export default function PersonProfilePage() {
                         </CardHeader>
                         <CardContent className="grid gap-4 md:grid-cols-2">
                             <div>
-                                <Label>Nghề nghiệp</Label>
+                                <label className="text-sm font-medium leading-none">Nghề nghiệp</label>
                                 <Input value={form.occupation} onChange={set('occupation')} placeholder="Kỹ sư, Giáo viên..." />
                             </div>
                             <div>
-                                <Label>Nơi công tác</Label>
+                                <label className="text-sm font-medium leading-none">Nơi công tác</label>
                                 <Input value={form.company} onChange={set('company')} placeholder="Tên công ty / cơ quan" />
                             </div>
                             <div className="md:col-span-2">
-                                <Label>Học vấn</Label>
+                                <label className="text-sm font-medium leading-none">Học vấn</label>
                                 <Input value={form.education} onChange={set('education')} placeholder="Đại học, Thạc sĩ..." />
                             </div>
                         </CardContent>
@@ -389,7 +474,7 @@ export default function PersonProfilePage() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div>
-                                <Label>Tiểu sử</Label>
+                                <label className="text-sm font-medium leading-none">Tiểu sử</label>
                                 <Textarea
                                     value={form.biography}
                                     onChange={set('biography')}
@@ -398,7 +483,7 @@ export default function PersonProfilePage() {
                                 />
                             </div>
                             <div>
-                                <Label>Ghi chú nội bộ</Label>
+                                <label className="text-sm font-medium leading-none">Ghi chú nội bộ</label>
                                 <Textarea
                                     value={form.notes}
                                     onChange={set('notes')}
@@ -409,8 +494,114 @@ export default function PersonProfilePage() {
                         </CardContent>
                     </Card>
 
+                    {/* Quan hệ gia đình */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Heart className="h-4 w-4" /> Quan hệ gia đình
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            {relError && (
+                                <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">{relError}</div>
+                            )}
+
+                            {/* Gia đình cha/mẹ */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Gia đình cha/mẹ (parentFamilies)</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {(person?.parentFamilies || []).map(fh => (
+                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium">
+                                            {fh}
+                                            <button
+                                                type="button"
+                                                className="ml-1 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleRemoveParent(fh)}
+                                                disabled={relLoading}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    {(person?.parentFamilies || []).length === 0 && (
+                                        <span className="text-xs text-muted-foreground">Chưa có</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={selectedParentFamily}
+                                        onChange={e => setSelectedParentFamily(e.target.value)}
+                                        className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                                    >
+                                        <option value="">— Chọn gia đình cha/mẹ —</option>
+                                        {allFamilies
+                                            .filter(f => !(person?.parentFamilies || []).includes(f.handle))
+                                            .map(f => (
+                                                <option key={f.handle} value={f.handle}>{f.label}</option>
+                                            ))
+                                        }
+                                    </select>
+                                    <Button size="sm" variant="outline" onClick={handleAddParent} disabled={relLoading || !selectedParentFamily}>
+                                        Thêm
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            {/* Gia đình vợ/chồng */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">
+                                    Gia đình vợ/chồng (families) — vai trò: {person?.gender === 2 ? 'Mẹ' : 'Cha'}
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    {(person?.families || []).map(fh => (
+                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium">
+                                            {fh}
+                                            <button
+                                                type="button"
+                                                className="ml-1 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleRemoveSpouse(fh)}
+                                                disabled={relLoading}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    {(person?.families || []).length === 0 && (
+                                        <span className="text-xs text-muted-foreground">Chưa có</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={selectedSpouseFamily}
+                                        onChange={e => setSelectedSpouseFamily(e.target.value)}
+                                        className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                                    >
+                                        <option value="">— Chọn gia đình vợ/chồng —</option>
+                                        {allFamilies
+                                            .filter(f => !(person?.families || []).includes(f.handle))
+                                            .map(f => (
+                                                <option key={f.handle} value={f.handle}>{f.label}</option>
+                                            ))
+                                        }
+                                    </select>
+                                    <Button size="sm" variant="outline" onClick={handleAddSpouse} disabled={relLoading || !selectedSpouseFamily}>
+                                        Thêm
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {saveError && (
+                        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                            Lỗi khi lưu: {saveError}
+                        </div>
+                    )}
+
                     <div className="flex justify-end gap-2 pb-4">
-                        <Button variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                        <Button variant="outline" onClick={() => { setEditing(false); setSaveError(''); }} disabled={saving}>
                             <X className="h-4 w-4 mr-2" />
                             Hủy
                         </Button>
@@ -470,85 +661,85 @@ export default function PersonProfilePage() {
                         </Card>
 
                         {/* Liên hệ */}
-                        {(person.phone || person.email || person.zalo || person.facebook) && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <Phone className="h-4 w-4" /> Liên hệ
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="grid gap-4 md:grid-cols-2">
-                                    {person.phone && <InfoRow label="Điện thoại" value={person.phone} />}
-                                    {person.email && <InfoRow label="Email" value={person.email} />}
-                                    {person.zalo && <InfoRow label="Zalo" value={person.zalo} />}
-                                    {person.facebook && <InfoRow label="Facebook" value={person.facebook} />}
-                                </CardContent>
-                            </Card>
-                        )}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Phone className="h-4 w-4" /> Liên hệ
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid gap-4 md:grid-cols-2">
+                                <InfoRow label="Điện thoại" value={person.phone || '—'} />
+                                <InfoRow label="Email" value={person.email || '—'} />
+                                <InfoRow label="Zalo" value={person.zalo || '—'} />
+                                {person.facebook ? (
+                                    <div>
+                                        <p className="text-xs font-medium text-muted-foreground">Facebook</p>
+                                        <a
+                                            href={person.facebook.startsWith('http') ? person.facebook : `https://${person.facebook}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-primary hover:underline break-all"
+                                        >
+                                            {person.facebook}
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <InfoRow label="Facebook" value="—" />
+                                )}
+                            </CardContent>
+                        </Card>
 
                         {/* Địa chỉ */}
-                        {(person.hometown || person.currentAddress) && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <MapPin className="h-4 w-4" /> Địa chỉ
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="grid gap-4 md:grid-cols-2">
-                                    {person.hometown && <InfoRow label="Quê quán" value={person.hometown} />}
-                                    {person.currentAddress && <InfoRow label="Nơi ở hiện tại" value={person.currentAddress} />}
-                                </CardContent>
-                            </Card>
-                        )}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <MapPin className="h-4 w-4" /> Địa chỉ
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid gap-4 md:grid-cols-2">
+                                <InfoRow label="Quê quán" value={person.hometown || '—'} />
+                                <InfoRow label="Nơi ở hiện tại" value={person.currentAddress || '—'} />
+                            </CardContent>
+                        </Card>
 
                         {/* Nghề nghiệp & Học vấn */}
-                        {(person.occupation || person.company || person.education) && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <Briefcase className="h-4 w-4" /> Nghề nghiệp & Học vấn
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="grid gap-4 md:grid-cols-2">
-                                    {person.occupation && <InfoRow label="Nghề nghiệp" value={person.occupation} />}
-                                    {person.company && <InfoRow label="Nơi công tác" value={person.company} />}
-                                    {person.education && (
-                                        <div className="flex items-start gap-2">
-                                            <GraduationCap className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                                            <div>
-                                                <p className="text-xs font-medium text-muted-foreground">Học vấn</p>
-                                                <p className="text-sm">{person.education}</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Briefcase className="h-4 w-4" /> Nghề nghiệp & Học vấn
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid gap-4 md:grid-cols-2">
+                                <InfoRow label="Nghề nghiệp" value={person.occupation || '—'} />
+                                <InfoRow label="Nơi công tác" value={person.company || '—'} />
+                                <div className="flex items-start gap-2">
+                                    <GraduationCap className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-medium text-muted-foreground">Học vấn</p>
+                                        <p className="text-sm">{person.education || '—'}</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         {/* Tiểu sử & Ghi chú */}
-                        {(person.biography || person.notes) && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <FileText className="h-4 w-4" /> Tiểu sử & Ghi chú
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    {person.biography && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground mb-1">Tiểu sử</p>
-                                            <p className="text-sm leading-relaxed">{person.biography}</p>
-                                        </div>
-                                    )}
-                                    {person.notes && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground mb-1">Ghi chú</p>
-                                            <p className="text-sm leading-relaxed text-muted-foreground">{person.notes}</p>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <FileText className="h-4 w-4" /> Tiểu sử & Ghi chú
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Tiểu sử</p>
+                                    <p className="text-sm leading-relaxed">{person.biography || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Ghi chú</p>
+                                    <p className="text-sm leading-relaxed text-muted-foreground">{person.notes || '—'}</p>
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         {/* Tags */}
                         {person.tags && person.tags.length > 0 && (
