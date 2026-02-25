@@ -72,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 id: u.id,
                 email: u.email || '',
                 display_name: u.user_metadata?.display_name || u.email?.split('@')[0] || '',
-                role: 'member',
+                role: 'viewer',
+                status: 'pending',
             });
         }
         await fetchProfile(u.id);
@@ -100,12 +101,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [ensureProfile]);
 
     const signIn = useCallback(async (email: string, password: string) => {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
             if (error.message.includes('Invalid login credentials')) {
                 return { error: 'Email hoặc mật khẩu không đúng' };
             }
             return { error: error.message };
+        }
+        // Check account status before allowing login
+        if (authData.user) {
+            const { data: prof } = await supabase
+                .from('profiles')
+                .select('status')
+                .eq('id', authData.user.id)
+                .maybeSingle();
+            if (prof?.status === 'pending') {
+                await supabase.auth.signOut();
+                return { error: 'Tài khoản đang chờ phê duyệt từ quản trị viên. Vui lòng liên hệ admin.' };
+            }
+            if (prof?.status === 'suspended') {
+                await supabase.auth.signOut();
+                return { error: 'Tài khoản đã bị tạm ngưng. Vui lòng liên hệ admin.' };
+            }
+            if (prof?.status === 'rejected') {
+                await supabase.auth.signOut();
+                return { error: 'Tài khoản đã bị từ chối. Vui lòng liên hệ admin.' };
+            }
         }
         return {};
     }, []);
@@ -122,13 +143,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (error.message.includes('already registered')) {
                 return { error: 'Email đã được đăng ký. Hãy đăng nhập.' };
             }
+            // Trigger failure or DB error — auth user may still have been created
+            if (error.message.includes('Database error saving new user') || error.message.includes('database')) {
+                return { error: 'Tài khoản đã được tạo. Đang chờ quản trị viên xét duyệt trước khi bạn có thể đăng nhập.' };
+            }
             return { error: error.message };
         }
-        // If email confirmation is required
-        if (data.user && !data.session) {
-            return { error: 'Đã đăng ký! Kiểm tra email để xác nhận tài khoản.' };
+        // Sign out immediately after registration — user must wait for admin approval
+        if (data.session) {
+            await supabase.auth.signOut();
         }
-        return {};
+        return { error: 'Tài khoản đã được tạo thành công. Vui lòng chờ quản trị viên xét duyệt trước khi đăng nhập.' };
     }, []);
 
     const signOut = useCallback(async () => {

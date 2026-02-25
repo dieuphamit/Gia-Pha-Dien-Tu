@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus } from 'lucide-react';
+import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -32,6 +32,8 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { AddMemberDialog } from '@/components/add-member-dialog';
+
+type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
@@ -76,12 +78,21 @@ function generateCode() {
     return code;
 }
 
+function StatusBadge({ status }: { status: string }) {
+    if (status === 'active') return <Badge variant="default">Hoạt động</Badge>;
+    if (status === 'pending') return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 hover:bg-amber-100">Chờ duyệt</Badge>;
+    if (status === 'suspended') return <Badge variant="destructive">Tạm ngưng</Badge>;
+    if (status === 'rejected') return <Badge variant="destructive" className="opacity-60">Từ chối</Badge>;
+    return <Badge variant="secondary">{status}</Badge>;
+}
+
 export default function AdminUsersPage() {
     const { isAdmin, loading: authLoading } = useAuth();
     const [users, setUsers] = useState<ProfileUser[]>([]);
     const [invites, setInvites] = useState<InviteLink[]>([]);
     const [loading, setLoading] = useState(true);
     const [inviteTableExists, setInviteTableExists] = useState(true);
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
     const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
     const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -89,7 +100,6 @@ export default function AdminUsersPage() {
     const [inviteMaxUses, setInviteMaxUses] = useState(1);
     const [copied, setCopied] = useState<string | null>(null);
 
-    // Fetch users from profiles table
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
@@ -102,7 +112,6 @@ export default function AdminUsersPage() {
         finally { setLoading(false); }
     }, []);
 
-    // Fetch invite links
     const fetchInvites = useCallback(async () => {
         try {
             const { data, error } = await supabase
@@ -110,7 +119,6 @@ export default function AdminUsersPage() {
                 .select('*')
                 .order('created_at', { ascending: false });
             if (error) {
-                // Table may not exist yet
                 setInviteTableExists(false);
             } else if (data) {
                 setInvites(data);
@@ -126,16 +134,11 @@ export default function AdminUsersPage() {
         }
     }, [authLoading, isAdmin, fetchUsers, fetchInvites]);
 
-    // Create invite link
     const handleCreateInvite = useCallback(async () => {
         const code = generateCode();
         const { data, error } = await supabase
             .from('invite_links')
-            .insert({
-                code,
-                role: inviteRole,
-                max_uses: inviteMaxUses,
-            })
+            .insert({ code, role: inviteRole, max_uses: inviteMaxUses })
             .select()
             .single();
         if (!error && data) {
@@ -143,39 +146,40 @@ export default function AdminUsersPage() {
         }
     }, [inviteRole, inviteMaxUses]);
 
-    // Delete invite link
     const handleDeleteInvite = useCallback(async (id: string) => {
-        const { error } = await supabase
-            .from('invite_links')
-            .delete()
-            .eq('id', id);
+        const { error } = await supabase.from('invite_links').delete().eq('id', id);
         if (!error) setInvites(prev => prev.filter(inv => inv.id !== id));
     }, []);
 
-    // Change user role
     const handleChangeRole = useCallback(async (userId: string, newRole: string) => {
-        const { error } = await supabase
-            .from('profiles')
-            .update({ role: newRole })
-            .eq('id', userId);
+        const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
         if (!error) {
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
         }
     }, []);
 
-    // Suspend / reactivate user
+    const handleApprove = useCallback(async (userId: string) => {
+        const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+        if (!error) {
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+        }
+    }, []);
+
+    const handleReject = useCallback(async (userId: string) => {
+        const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', userId);
+        if (!error) {
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
+        }
+    }, []);
+
     const handleToggleStatus = useCallback(async (userId: string, currentStatus: string) => {
         const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-        const { error } = await supabase
-            .from('profiles')
-            .update({ status: newStatus })
-            .eq('id', userId);
+        const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', userId);
         if (!error) {
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus } : u));
         }
     }, []);
 
-    // Copy to clipboard
     const handleCopy = useCallback(async (text: string) => {
         try {
             await navigator.clipboard.writeText(text);
@@ -198,10 +202,12 @@ export default function AdminUsersPage() {
         return `${baseUrl}/register?code=${code}`;
     };
 
-    const handleCloseDialog = () => {
-        setInviteDialogOpen(false);
-        setCopied(null);
-    };
+    const pendingCount = users.filter(u => u.status === 'pending').length;
+
+    const filteredUsers = users.filter(u => {
+        if (statusFilter === 'all') return true;
+        return u.status === statusFilter;
+    });
 
     if (authLoading) {
         return (
@@ -233,11 +239,11 @@ export default function AdminUsersPage() {
                     <Button variant="outline" size="icon" onClick={() => { fetchUsers(); fetchInvites(); }}>
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" id="admin-add-member-btn" onClick={() => setAddMemberOpen(true)}>
+                    <Button variant="outline" onClick={() => setAddMemberOpen(true)}>
                         <UserPlus className="mr-2 h-4 w-4" />
                         Thêm thành viên
                     </Button>
-                    <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); else setInviteDialogOpen(true); }}>
+                    <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) setInviteDialogOpen(false); else setInviteDialogOpen(true); }}>
                         <DialogTrigger asChild>
                             <Button>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -274,9 +280,7 @@ export default function AdminUsersPage() {
                                 </div>
                                 {!inviteTableExists && (
                                     <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 text-amber-700 dark:text-amber-400 text-xs">
-                                        ⚠️ Bảng <code>invite_links</code> chưa tồn tại. Hãy chạy file
-                                        <code className="mx-1">migration-add-editor-role.sql</code>
-                                        trong Supabase Dashboard trước.
+                                        ⚠️ Bảng <code>invite_links</code> chưa tồn tại.
                                     </div>
                                 )}
                                 <Button className="w-full" onClick={handleCreateInvite} disabled={!inviteTableExists}>
@@ -289,23 +293,71 @@ export default function AdminUsersPage() {
                 </div>
             </div>
 
-            <AddMemberDialog
-                open={addMemberOpen}
-                onOpenChange={setAddMemberOpen}
-                onSuccess={fetchUsers}
-            />
+            <AddMemberDialog open={addMemberOpen} onOpenChange={setAddMemberOpen} onSuccess={fetchUsers} />
+
+            {/* Pending alert */}
+            {pendingCount > 0 && (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                    <CardContent className="flex items-center gap-3 py-4">
+                        <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <div className="flex-1">
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                                Có {pendingCount} tài khoản đang chờ phê duyệt
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                Vui lòng xem xét và phê duyệt để các thành viên có thể đăng nhập
+                            </p>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900"
+                            onClick={() => setStatusFilter('pending')}
+                        >
+                            Xem ngay
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Users Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Danh sách thành viên</CardTitle>
-                    <CardDescription>{users.length} thành viên</CardDescription>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Danh sách thành viên</CardTitle>
+                            <CardDescription>{filteredUsers.length} / {users.length} thành viên</CardDescription>
+                        </div>
+                        {/* Status filter tabs */}
+                        <div className="flex gap-1 rounded-lg border p-1 bg-muted/50">
+                            {([
+                                { key: 'all', label: 'Tất cả' },
+                                { key: 'pending', label: `Chờ duyệt${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+                                { key: 'active', label: 'Hoạt động' },
+                                { key: 'suspended', label: 'Tạm ngưng' },
+                            ] as { key: StatusFilter; label: string }[]).map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setStatusFilter(tab.key)}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        statusFilter === tab.key
+                                            ? 'bg-background shadow-sm text-foreground'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    } ${tab.key === 'pending' && pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {loading ? (
                         <div className="flex items-center justify-center h-32">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>
+                    ) : filteredUsers.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">Không có thành viên nào</p>
                     ) : (
                         <Table>
                             <TableHeader>
@@ -319,7 +371,7 @@ export default function AdminUsersPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {users.map((user) => (
+                                {filteredUsers.map((user) => (
                                     <TableRow key={user.id}>
                                         <TableCell className="font-medium">{user.display_name || user.email.split('@')[0]}</TableCell>
                                         <TableCell>{user.email}</TableCell>
@@ -329,9 +381,7 @@ export default function AdminUsersPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant={user.status === 'active' ? 'default' : 'destructive'}>
-                                                {user.status === 'active' ? 'Hoạt động' : 'Tạm ngưng'}
-                                            </Badge>
+                                            <StatusBadge status={user.status} />
                                         </TableCell>
                                         <TableCell>{new Date(user.created_at).toLocaleDateString('vi-VN')}</TableCell>
                                         <TableCell>
@@ -342,6 +392,23 @@ export default function AdminUsersPage() {
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
+                                                    {user.status === 'pending' && (
+                                                        <>
+                                                            <DropdownMenuItem
+                                                                className="text-green-600"
+                                                                onClick={() => handleApprove(user.id)}
+                                                            >
+                                                                ✅ Phê duyệt
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                className="text-destructive"
+                                                                onClick={() => handleReject(user.id)}
+                                                            >
+                                                                ❌ Từ chối
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                        </>
+                                                    )}
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'admin')}>
                                                         🔴 Đặt Admin
                                                     </DropdownMenuItem>
@@ -354,13 +421,17 @@ export default function AdminUsersPage() {
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'viewer')}>
                                                         ⚪ Đặt Viewer
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem
-                                                        className={user.status === 'active' ? 'text-destructive' : 'text-green-600'}
-                                                        onClick={() => handleToggleStatus(user.id, user.status)}
-                                                    >
-                                                        {user.status === 'active' ? 'Tạm ngưng' : 'Kích hoạt lại'}
-                                                    </DropdownMenuItem>
+                                                    {user.status !== 'pending' && (
+                                                        <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                className={user.status === 'active' ? 'text-destructive' : 'text-green-600'}
+                                                                onClick={() => handleToggleStatus(user.id, user.status)}
+                                                            >
+                                                                {user.status === 'active' ? 'Tạm ngưng' : 'Kích hoạt lại'}
+                                                            </DropdownMenuItem>
+                                                        </>
+                                                    )}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>

@@ -17,6 +17,7 @@ import {
     Contact,
     Newspaper,
     CalendarDays,
+    HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ const navItems = [
 
 const adminItems = [
     { href: '/admin/users', label: 'Quản lý Users', icon: Shield },
+    { href: '/admin/questions', label: 'Câu hỏi xác minh', icon: HelpCircle },
     { href: '/admin/edits', label: 'Kiểm duyệt', icon: ClipboardCheck },
     { href: '/admin/audit', label: 'Audit Log', icon: FileText },
     { href: '/admin/backup', label: 'Backup', icon: Database },

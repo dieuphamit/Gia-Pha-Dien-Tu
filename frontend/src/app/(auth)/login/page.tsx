@@ -43,7 +43,12 @@ export default function LoginPage() {
             if (mode === 'register') {
                 const result = await signUp(data.email, data.password, data.displayName);
                 if (result.error) {
-                    if (result.error.includes('Đã đăng ký') || result.error.includes('Kiểm tra email')) {
+                    if (
+                        result.error.includes('Đã đăng ký') ||
+                        result.error.includes('Kiểm tra email') ||
+                        result.error.includes('Đang chờ quản trị viên') ||
+                        result.error.includes('Vui lòng chờ quản trị viên')
+                    ) {
                         setSuccess(result.error);
                     } else {
                         setError(result.error);
