@@ -85,14 +85,14 @@ CREATE TRIGGER families_updated_at
 -- ║  2. AUTH: profiles + trigger tạo profile tự động       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
--- Roles: admin > editor > member > viewer
+-- Roles: admin > editor > member
 -- Status: pending (chờ duyệt) → active | rejected | suspended
 CREATE TABLE IF NOT EXISTS profiles (
     id           UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email        TEXT        UNIQUE NOT NULL,
     display_name TEXT,
-    role         TEXT        NOT NULL DEFAULT 'viewer'
-                             CHECK (role IN ('admin', 'editor', 'member', 'viewer')),
+    role         TEXT        NOT NULL DEFAULT 'member'
+                             CHECK (role IN ('admin', 'editor', 'member')),
     status       TEXT        NOT NULL DEFAULT 'pending'
                              CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
     person_handle TEXT,
@@ -115,7 +115,7 @@ BEGIN
             VALUES (
                 NEW.id,
                 user_email,
-                CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'admin'  ELSE 'viewer' END,
+                CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'admin'  ELSE 'member' END,
                 CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'active' ELSE 'pending' END
             )
             ON CONFLICT (email) DO UPDATE SET id = EXCLUDED.id;
@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS invite_links (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     code       TEXT        UNIQUE NOT NULL,
     role       TEXT        NOT NULL DEFAULT 'member'
-                           CHECK (role IN ('member', 'editor', 'archivist')),
+                           CHECK (role IN ('member', 'editor')),
     max_uses   INT         NOT NULL DEFAULT 1,
     used_count INT         NOT NULL DEFAULT 0,
     created_by UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -319,8 +319,8 @@ ALTER TABLE people ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anyone can read people"            ON people FOR SELECT USING (true);
 CREATE POLICY "authenticated can insert people"   ON people FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "authenticated can update people"   ON people FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "admin or editor can delete people" ON people FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+CREATE POLICY "admin can delete people" ON people FOR DELETE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- ── families ─────────────────────────────────────────────────
@@ -329,8 +329,8 @@ ALTER TABLE families ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "anyone can read families"            ON families FOR SELECT USING (true);
 CREATE POLICY "authenticated can insert families"   ON families FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "authenticated can update families"   ON families FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "admin or editor can delete families" ON families FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+CREATE POLICY "admin can delete families" ON families FOR DELETE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- ── profiles ─────────────────────────────────────────────────
@@ -379,9 +379,9 @@ CREATE POLICY "admin or editor can insert posts"       ON posts FOR INSERT WITH 
 CREATE POLICY "admin or editor can update posts"       ON posts FOR UPDATE USING (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
 );
-CREATE POLICY "admin or editor or owner can delete posts" ON posts FOR DELETE USING (
+CREATE POLICY "admin or author can delete posts" ON posts FOR DELETE USING (
     author_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- ── post_comments ────────────────────────────────────────────
@@ -407,9 +407,9 @@ CREATE POLICY "admin or editor or creator can update events" ON events FOR UPDAT
     creator_id = auth.uid() OR
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
 );
-CREATE POLICY "admin or editor or creator can delete events" ON events FOR DELETE USING (
+CREATE POLICY "admin or creator can delete events" ON events FOR DELETE USING (
     creator_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- ── event_rsvps ──────────────────────────────────────────────

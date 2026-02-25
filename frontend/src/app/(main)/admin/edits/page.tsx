@@ -27,7 +27,7 @@ interface Contribution {
 }
 
 export default function AdminEditsPage() {
-    const { isAdmin, loading: authLoading, user } = useAuth();
+    const { canEdit, loading: authLoading, user } = useAuth();
     const router = useRouter();
     const [contributions, setContributions] = useState<Contribution[]>([]);
     const [loading, setLoading] = useState(true);
@@ -45,12 +45,12 @@ export default function AdminEditsPage() {
     }, [filter]);
 
     useEffect(() => {
-        if (!authLoading && !isAdmin) {
+        if (!authLoading && !canEdit) {
             router.push('/tree');
             return;
         }
-        if (!authLoading && isAdmin) fetchContributions();
-    }, [authLoading, isAdmin, fetchContributions, router]);
+        if (!authLoading && canEdit) fetchContributions();
+    }, [authLoading, canEdit, fetchContributions, router]);
 
     const handleAction = async (id: string, action: 'approved' | 'rejected') => {
         setProcessingId(id);
