@@ -63,6 +63,7 @@ export default function PersonProfilePage() {
     const [relError, setRelError] = useState('');
     const [saveError, setSaveError] = useState('');
     const [allFamilies, setAllFamilies] = useState<FamilyOption[]>([]);
+    const [familyInfoMap, setFamilyInfoMap] = useState<Map<string, string>>(new Map());
     const [selectedParentFamily, setSelectedParentFamily] = useState('');
     const [selectedSpouseFamily, setSelectedSpouseFamily] = useState('');
     const [form, setForm] = useState<EditForm>({
@@ -116,8 +117,27 @@ export default function PersonProfilePage() {
         setLoading(false);
     };
 
+    const loadFamilyInfo = async () => {
+        const { supabase } = await import('@/lib/supabase');
+        const [{ data: fams }, { data: people }] = await Promise.all([
+            supabase.from('families').select('handle, father_handle, mother_handle').order('handle'),
+            supabase.from('people').select('handle, display_name'),
+        ]);
+        if (!fams || !people) return;
+        const nameMap = new Map(people.map(p => [p.handle as string, p.display_name as string]));
+        const infoMap = new Map<string, string>();
+        fams.forEach(f => {
+            const parts: string[] = [];
+            if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
+            if (f.mother_handle) parts.push(nameMap.get(f.mother_handle) || f.mother_handle);
+            infoMap.set(f.handle, parts.length > 0 ? parts.join(' & ') : f.handle);
+        });
+        setFamilyInfoMap(infoMap);
+    };
+
     useEffect(() => {
         fetchPerson();
+        loadFamilyInfo();
     }, [handle]);
 
     const startEdit = () => {
@@ -511,8 +531,8 @@ export default function PersonProfilePage() {
                                 <p className="text-sm font-medium">Gia đình cha/mẹ (parentFamilies)</p>
                                 <div className="flex flex-wrap gap-2">
                                     {(person?.parentFamilies || []).map(fh => (
-                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium">
-                                            {fh}
+                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium" title={fh}>
+                                            {familyInfoMap.get(fh) || fh}
                                             <button
                                                 type="button"
                                                 className="ml-1 text-muted-foreground hover:text-destructive"
@@ -556,8 +576,8 @@ export default function PersonProfilePage() {
                                 </p>
                                 <div className="flex flex-wrap gap-2">
                                     {(person?.families || []).map(fh => (
-                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium">
-                                            {fh}
+                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium" title={fh}>
+                                            {familyInfoMap.get(fh) || fh}
                                             <button
                                                 type="button"
                                                 className="ml-1 text-muted-foreground hover:text-destructive"
@@ -774,7 +794,9 @@ export default function PersonProfilePage() {
                                         <p className="text-sm font-medium text-muted-foreground">Gia đình (cha/mẹ)</p>
                                         {person.parentFamilies && person.parentFamilies.length > 0 ? (
                                             person.parentFamilies.map((f) => (
-                                                <Badge key={f} variant="outline" className="mr-1">{f}</Badge>
+                                                <Badge key={f} variant="outline" className="mr-1" title={f}>
+                                                    {familyInfoMap.get(f) || f}
+                                                </Badge>
                                             ))
                                         ) : (
                                             <p className="text-sm text-muted-foreground">Không có thông tin</p>
@@ -785,7 +807,9 @@ export default function PersonProfilePage() {
                                         <p className="text-sm font-medium text-muted-foreground">Gia đình (vợ/chồng, con)</p>
                                         {person.families && person.families.length > 0 ? (
                                             person.families.map((f) => (
-                                                <Badge key={f} variant="outline" className="mr-1">{f}</Badge>
+                                                <Badge key={f} variant="outline" className="mr-1" title={f}>
+                                                    {familyInfoMap.get(f) || f}
+                                                </Badge>
                                             ))
                                         ) : (
                                             <p className="text-sm text-muted-foreground">Không có thông tin</p>

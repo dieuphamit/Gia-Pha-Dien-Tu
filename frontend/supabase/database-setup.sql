@@ -240,37 +240,62 @@ ALTER TABLE contributions ADD CONSTRAINT contributions_value_length CHECK (char_
 -- ║  6. DỮ LIỆU MẪU DEMO (xóa phần này nếu dùng dữ liệu thật)║
 -- ╚══════════════════════════════════════════════════════════╝
 
--- Dòng họ Phạm — 4 thế hệ, 10 thành viên
+-- Dòng họ Phạm — 5 thế hệ, 25 thành viên
 -- Cấu trúc:
---   Đời 1: Phạm Hướng + Đinh Thị Khai
---   Đời 2: Phạm Quang Viên
---   Đời 3: Quang Vũ, Hoài Nga, Tường Vi, Minh Nguyệt
---   Đời 4: Quang Vũ → Quang Diệu, Trọng Nhân
+--   Đời 1: Phạm Hướng (F001, không có vợ trong cây)
+--   Đời 2: Phạm Quang Viên + vợ Đinh Thị Khai (F002)
+--   Đời 3: 8 con F002 + vợ/chồng ngoại tộc
+--   Đời 4: 5 con F007 (Nga+Hải) | 1 con F005 (Vũ) | 1 con F006 (Diệu)
+--   Đời 5: 2 con F008 (Dũng+Trâm)
 
 -- People
-INSERT INTO people (handle, display_name, gender, generation, birth_year, death_year, is_living, is_patrilineal, families, parent_families) VALUES
--- Đời 1
-('P001', 'Phạm Hướng',              1, 1, 1920, 1995, false, true,  '{"F001"}', '{}'),
--- Đời 2
-('P002', 'Phạm Quang Viên',         1, 2, 1945, NULL, true,  true,  '{"F002"}', '{"F001"}'),
--- Đời 3 (con Phạm Quang Viên)
-('P005', 'Phạm Quang Vũ',           1, 3, 1970, NULL, true,  true,  '{"F005"}', '{"F002"}'),
-('P006', 'Phạm Thị Hoài Nga',       2, 3, 1973, NULL, true,  true,  '{}',       '{"F002"}'),
-('P009', 'Phạm Vũ Tường Vi',        1, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}'),
-('P010', 'Phạm Thị Minh Nguyệt',    2, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}'),
-('P011', 'Phạm Quang Diệu',         1, 3, 1998, NULL, true,  true,  '{}',       '{"F002"}'),
--- Đời 4 (con Phạm Quang Vũ)
-('P013', 'Phạm Trọng Nhân',          1, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}'),
--- Vợ (ngoại tộc)
-('P014', 'Đinh Thị Khai',            2, 1, 1925, 2000, false, false, '{}', '{}'),
-('P015', 'Nguyễn Thị Hoài Thương',   2, 3, NULL, NULL, true,  false, '{}', '{}')
+INSERT INTO people (handle, display_name, gender, generation, birth_year, death_year, is_living, is_patrilineal, families, parent_families, current_address, occupation) VALUES
+-- ── Đời 1 ─────────────────────────────────────────────────
+('P001', 'Phạm Hướng',              1, 1, 1920, 1995, false, true,  '{"F001"}', '{}',        NULL,       NULL),
+-- ── Đời 2 ─────────────────────────────────────────────────
+('P002', 'Phạm Quang Viên',         1, 2, 1945, NULL, true,  true,  '{"F002"}', '{"F001"}',  NULL,       NULL),
+('P014', 'Đinh Thị Khai',            2, 2, 1925, 2000, false, false, '{"F002"}', '{}',        NULL,       NULL),
+-- ── Đời 3 (8 con F002) ────────────────────────────────────
+('P005', 'Phạm Quang Vũ',           1, 3, 1970, NULL, true,  true,  '{"F005"}', '{"F002"}',  NULL,       NULL),
+('P006', 'Phạm Thị Hoài Nga',       2, 3, 1974, NULL, true,  true,  '{"F007"}', '{"F002"}',  'Đồng Nai', 'Công nhân'),
+('P028', 'Phạm Đăng Phương',        1, 3, NULL, NULL, true,  true,  '{}',       '{"F002"}',  NULL,       NULL),
+('P029', 'Phạm Phương Anh',         2, 3, NULL, NULL, true,  true,  '{}',       '{"F002"}',  NULL,       NULL),
+('P009', 'Phạm Vũ Tường Vi',        1, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}',  NULL,       NULL),
+('P010', 'Phạm Thị Minh Nguyệt',    2, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}',  NULL,       NULL),
+('P011', 'Phạm Quang Diệu',         1, 3, 1989, NULL, true,  true,  '{"F006"}', '{"F002"}',  'Japan',    'Kỹ Sư'),
+('P030', 'Phạm Đăng Hiền',          1, 3, NULL, NULL, true,  true,  '{}',       '{"F002"}',  NULL,       NULL),
+-- Vợ/chồng ngoại tộc Đời 3
+('P015', 'Nguyễn Thị Hoài Thương',   2, 3, NULL, NULL, true,  false, '{}',       '{}',        NULL,       NULL),
+('P016', 'Ngô Huỳnh Yến Tiên',       2, 3, 1991, NULL, true,  false, '{"F006"}', '{}',        'Japan',    'Nội Trợ'),
+('P018', 'Nguyễn Phước Hải',         1, 3, 1970, NULL, true,  false, '{"F007"}', '{}',        'Đồng Nai', 'Bảo Vệ'),
+-- ── Đời 4 ─────────────────────────────────────────────────
+-- Con F005 (Phạm Quang Vũ + Nguyễn Thị Hoài Thương)
+('P013', 'Phạm Trọng Nhân',         1, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}',  NULL,       NULL),
+-- Con F006 (Phạm Quang Diệu + Ngô Huỳnh Yến Tiên)
+('P017', 'Phạm Tiên Đan',            2, 4, 2024, NULL, true,  true,  '{}',       '{"F006"}',  'Japan',    'Em bé'),
+-- 5 con F007 (Nguyễn Phước Hải + Phạm Thị Hoài Nga)
+('P019', 'Nguyễn Nữ Thuỳ Trang',    2, 4, 1996, NULL, true,  false, '{}',       '{"F007"}',  'Đồng Nai', 'Kế Toán'),
+('P020', 'Nguyễn Phạm Đăng Doanh',  1, 4, 2009, NULL, true,  false, '{}',       '{"F007"}',  'Đồng Nai', 'Học sinh'),
+('P021', 'Nguyễn Nữ Hoài Trâm',     2, 4, 2001, NULL, true,  false, '{"F008"}', '{"F007"}',  'TP HCM',   'NV Văn Phòng'),
+('P027', 'Nguyễn Thị Thuỳ Tiên',    2, 4, 1998, NULL, true,  false, '{"F009"}', '{"F007"}',  'Đắk Mil',  'NV Bưu Điện'),
+('P024', 'Nguyễn Đức Triều',         1, 4, 2003, NULL, true,  false, '{}',       '{"F007"}',  'TP HCM',   'tự do'),
+-- Chồng/vợ ngoại tộc Đời 4
+('P026', 'Nguyễn Ngọc Dũng',         1, 4, 1997, NULL, true,  false, '{"F008"}', '{}',        'Đắk Mil',  'tự do'),
+('P025', 'Nguyễn Tạo',               1, 4, 1998, NULL, true,  false, '{"F009"}', '{}',        'Đắk Mil',  'tự do'),
+-- ── Đời 5 (con F008: Nguyễn Ngọc Dũng + Nguyễn Nữ Hoài Trâm)
+('P022', 'Nguyễn Ngọc Châu Anh',    2, 5, 2017, NULL, true,  false, '{}',       '{"F008"}',  'TP HCM',   'Học sinh'),
+('P023', 'Nguyễn Ngọc Linh Đan',    2, 5, 2021, NULL, true,  false, '{}',       '{"F008"}',  'Đồng Nai', 'Học sinh')
 ON CONFLICT (handle) DO NOTHING;
 
 -- Families
 INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
-('F001', 'P001', 'P014', '{"P002"}'),
-('F002', 'P002', NULL,   '{"P005","P006","P009","P010","P011"}'),
-('F005', 'P005', 'P015', '{"P013"}')
+('F001', 'P001', NULL,   '{"P002"}'),
+('F002', 'P002', 'P014', '{"P005","P006","P028","P029","P009","P010","P011","P030"}'),
+('F005', 'P005', 'P015', '{"P013"}'),
+('F006', 'P011', 'P016', '{"P017"}'),
+('F007', 'P018', 'P006', '{"P019","P020","P021","P027","P024"}'),
+('F008', 'P026', 'P021', '{"P022","P023"}'),
+('F009', 'P025', 'P027', '{}')
 ON CONFLICT (handle) DO NOTHING;
 
 
