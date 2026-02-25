@@ -11,6 +11,7 @@ import {
     Send,
     User,
     Calendar,
+    AlertCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +33,7 @@ interface Post {
     status: string;
     created_at: string;
     updated_at: string;
-    author?: { email: string; display_name: string | null; role: string };
+    author_name?: string;   // enriched client-side
     comment_count?: number;
 }
 
@@ -40,31 +41,35 @@ interface Comment {
     id: string;
     author_id: string;
     body: string;
-    parent_id: string | null;
     created_at: string;
-    author?: { email: string; display_name: string | null };
+    author_name?: string;
 }
 
 // === Post Composer ===
 
 function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
-    const { user, isAdmin } = useAuth();
+    const { user, canEdit } = useAuth();
     const [body, setBody] = useState('');
     const [title, setTitle] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [expanded, setExpanded] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async () => {
         if (!body.trim() || !user) return;
         setSubmitting(true);
+        setError(null);
         try {
-            const { error } = await supabase.from('posts').insert({
+            const { error: insertError } = await supabase.from('posts').insert({
                 author_id: user.id,
                 title: title.trim() || null,
                 body: body.trim(),
                 type: 'general',
+                status: 'published',
             });
-            if (!error) {
+            if (insertError) {
+                setError(`Lỗi đăng bài: ${insertError.message}`);
+            } else {
                 setBody('');
                 setTitle('');
                 setExpanded(false);
@@ -75,7 +80,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
         }
     };
 
-    if (!isAdmin) return null;
+    if (!canEdit) return null;
 
     return (
         <Card>
@@ -94,9 +99,15 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
                     onFocus={() => setExpanded(true)}
                     rows={expanded ? 4 : 2}
                 />
+                {error && (
+                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {error}
+                    </div>
+                )}
                 {expanded && (
                     <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setExpanded(false)}>
+                        <Button variant="outline" size="sm" onClick={() => { setExpanded(false); setError(null); }}>
                             Hủy
                         </Button>
                         <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || submitting}>
@@ -120,12 +131,31 @@ function CommentSection({ postId }: { postId: string }) {
 
     const fetchComments = useCallback(async () => {
         setLoading(true);
+        // Fetch comments, then enrich with profile names separately
         const { data } = await supabase
             .from('post_comments')
-            .select('*, author:profiles(email, display_name)')
+            .select('id, author_id, body, created_at')
             .eq('post_id', postId)
             .order('created_at', { ascending: true });
-        if (data) setComments(data);
+
+        if (data && data.length > 0) {
+            // Get author names
+            const authorIds = [...new Set(data.map((c: { author_id: string }) => c.author_id).filter(Boolean))];
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, display_name, email')
+                .in('id', authorIds);
+            const profileMap: Record<string, string> = {};
+            profiles?.forEach((p: { id: string; display_name: string | null; email: string }) => {
+                profileMap[p.id] = p.display_name || p.email?.split('@')[0] || 'Ẩn danh';
+            });
+            setComments(data.map((c: { id: string; author_id: string; body: string; created_at: string }) => ({
+                ...c,
+                author_name: profileMap[c.author_id] || 'Ẩn danh',
+            })));
+        } else {
+            setComments([]);
+        }
         setLoading(false);
     }, [postId]);
 
@@ -155,7 +185,7 @@ function CommentSection({ postId }: { postId: string }) {
                             <User className="h-3 w-3 text-muted-foreground" />
                         </div>
                         <div className="flex-1">
-                            <p className="text-xs font-medium">{c.author?.display_name || c.author?.email?.split('@')[0]}</p>
+                            <p className="text-xs font-medium">{c.author_name}</p>
                             <p className="text-sm">{c.body}</p>
                             <span className="text-xs text-muted-foreground">
                                 {new Date(c.created_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -207,7 +237,7 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
                             <User className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                            <p className="font-medium text-sm">{post.author?.display_name || post.author?.email?.split('@')[0] || 'Ẩn danh'}</p>
+                            <p className="font-medium text-sm">{post.author_name || 'Ẩn danh'}</p>
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Calendar className="h-3 w-3" />
                                 {new Date(post.created_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -248,35 +278,63 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
 export default function FeedPage() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     const fetchPosts = useCallback(async () => {
         setLoading(true);
+        setFetchError(null);
         try {
-            const { data } = await supabase
+            // Step 1: Fetch posts WITHOUT join (tránh lỗi FK không match)
+            const { data, error } = await supabase
                 .from('posts')
-                .select('*, author:profiles(email, display_name, role)')
+                .select('id, author_id, type, title, body, is_pinned, status, created_at, updated_at')
                 .eq('status', 'published')
                 .order('is_pinned', { ascending: false })
                 .order('created_at', { ascending: false });
 
-            if (data) {
-                // Get comment counts
-                const postIds = data.map((p: Post) => p.id);
-                if (postIds.length > 0) {
-                    const { data: counts } = await supabase
-                        .from('comments')
-                        .select('post_id')
-                        .in('post_id', postIds);
-                    const countMap: Record<string, number> = {};
-                    counts?.forEach((c: { post_id: string }) => {
-                        countMap[c.post_id] = (countMap[c.post_id] || 0) + 1;
-                    });
-                    data.forEach((p: Post) => { p.comment_count = countMap[p.id] || 0; });
-                }
-                setPosts(data);
+            if (error) {
+                setFetchError(`Không thể tải bảng tin: ${error.message}`);
+                return;
             }
-        } catch { /* ignore */ }
-        finally { setLoading(false); }
+            if (!data || data.length === 0) {
+                setPosts([]);
+                return;
+            }
+
+            // Step 2: Enrich author names from profiles (separate query)
+            const authorIds = [...new Set(data.map((p: Post) => p.author_id).filter(Boolean))];
+            const profileMap: Record<string, string> = {};
+            if (authorIds.length > 0) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, display_name, email')
+                    .in('id', authorIds);
+                profiles?.forEach((p: { id: string; display_name: string | null; email: string }) => {
+                    profileMap[p.id] = p.display_name || p.email?.split('@')[0] || 'Ẩn danh';
+                });
+            }
+
+            // Step 3: Count comments from post_comments (correct table name)
+            const postIds = data.map((p: Post) => p.id);
+            const countMap: Record<string, number> = {};
+            const { data: counts } = await supabase
+                .from('post_comments')
+                .select('post_id')
+                .in('post_id', postIds);
+            counts?.forEach((c: { post_id: string }) => {
+                countMap[c.post_id] = (countMap[c.post_id] || 0) + 1;
+            });
+
+            setPosts(data.map((p: Post) => ({
+                ...p,
+                author_name: profileMap[p.author_id] || 'Ẩn danh',
+                comment_count: countMap[p.id] || 0,
+            })));
+        } catch (e) {
+            setFetchError(`Lỗi kết nối: ${e instanceof Error ? e.message : 'Unknown'}`);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => { fetchPosts(); }, [fetchPosts]);
@@ -292,6 +350,13 @@ export default function FeedPage() {
             </div>
 
             <PostComposer onPostCreated={fetchPosts} />
+
+            {fetchError && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-4 py-3">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {fetchError}
+                </div>
+            )}
 
             {loading ? (
                 <div className="flex items-center justify-center h-48">
