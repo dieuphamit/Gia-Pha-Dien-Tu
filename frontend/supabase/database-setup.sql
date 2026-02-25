@@ -240,45 +240,37 @@ ALTER TABLE contributions ADD CONSTRAINT contributions_value_length CHECK (char_
 -- ║  6. DỮ LIỆU MẪU DEMO (xóa phần này nếu dùng dữ liệu thật)║
 -- ╚══════════════════════════════════════════════════════════╝
 
--- Dòng họ Phạm — 4 thế hệ, 16 thành viên
+-- Dòng họ Phạm — 4 thế hệ, 10 thành viên
 -- Cấu trúc:
---   Đời 1: Phạm Hướng (tổ tiên) + Đinh Thị Khai
---   Đời 2: Quang Viên, Nhiên, [Con thứ 3] (3 con)
---   Đời 3: Quang Viên → Quang Vũ, Hoài Nga | Nhiên → Đăng Phương, Phương Anh | [Con 3] → Tường Vi
---   Đời 4: Quang Vũ → Minh Nguyệt, Quang Diệu, Trọng Nhân | Đăng Phương → Đăng Hiền
+--   Đời 1: Phạm Hướng + Đinh Thị Khai
+--   Đời 2: Phạm Quang Viên
+--   Đời 3: Quang Vũ, Hoài Nga, Tường Vi, Minh Nguyệt
+--   Đời 4: Quang Vũ → Quang Diệu, Trọng Nhân
 
 -- People
 INSERT INTO people (handle, display_name, gender, generation, birth_year, death_year, is_living, is_patrilineal, families, parent_families) VALUES
 -- Đời 1
-('P001', 'Phạm Hướng',             1, 1, 1920, 1995, false, true,  '{"F001"}', '{}'),
+('P001', 'Phạm Hướng',              1, 1, 1920, 1995, false, true,  '{"F001"}', '{}'),
 -- Đời 2
-('P002', 'Phạm Quang Viên',        1, 2, 1945, NULL, true,  true,  '{"F002"}', '{"F001"}'),
-('P003', 'Phạm Nhiên',             1, 2, 1948, NULL, true,  true,  '{"F003"}', '{"F001"}'),
-('P004', 'Phạm [Chưa cập nhật]',   1, 2, 1951, NULL, true,  true,  '{"F004"}', '{"F001"}'),
--- Đời 3
-('P005', 'Phạm Quang Vũ',          1, 3, 1970, NULL, true,  true,  '{"F005"}', '{"F002"}'),
-('P006', 'Phạm Thị Hoài Nga',      2, 3, 1973, NULL, true,  true,  '{}',       '{"F002"}'),
-('P007', 'Phạm Đăng Phương',       1, 3, 1975, NULL, true,  true,  '{"F006"}', '{"F003"}'),
-('P008', 'Phạm Phương Anh',        1, 3, 1978, NULL, true,  true,  '{}',       '{"F003"}'),
-('P009', 'Phạm Vũ Tường Vi',       1, 3, 1980, NULL, true,  true,  '{}',       '{"F004"}'),
--- Đời 4
-('P010', 'Phạm Thị Minh Nguyệt',   2, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}'),
-('P011', 'Phạm Quang Diệu',        1, 4, 1998, NULL, true,  true,  '{}',       '{"F005"}'),
-('P012', 'Phạm Đăng Hiền',          1, 4, 2000, NULL, true,  true,  '{}',       '{"F006"}'),
-('P013', 'Phạm Trọng Nhân',         1, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}'),
+('P002', 'Phạm Quang Viên',         1, 2, 1945, NULL, true,  true,  '{"F002"}', '{"F001"}'),
+-- Đời 3 (con Phạm Quang Viên)
+('P005', 'Phạm Quang Vũ',           1, 3, 1970, NULL, true,  true,  '{"F005"}', '{"F002"}'),
+('P006', 'Phạm Thị Hoài Nga',       2, 3, 1973, NULL, true,  true,  '{}',       '{"F002"}'),
+('P009', 'Phạm Vũ Tường Vi',        1, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}'),
+('P010', 'Phạm Thị Minh Nguyệt',    2, 3, 1980, NULL, true,  true,  '{}',       '{"F002"}'),
+('P011', 'Phạm Quang Diệu',         1, 3, 1998, NULL, true,  true,  '{}',       '{"F002"}'),
+-- Đời 4 (con Phạm Quang Vũ)
+('P013', 'Phạm Trọng Nhân',          1, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}'),
 -- Vợ (ngoại tộc)
-('P014', 'Đinh Thị Khai',           2, 1, 1925, 2000, false, false, '{}', '{}'),
-('P015', 'Phạm Thị Hoa',           2, 3, 1972, NULL, true,  false, '{}', '{}')
+('P014', 'Đinh Thị Khai',            2, 1, 1925, 2000, false, false, '{}', '{}'),
+('P015', 'Nguyễn Thị Hoài Thương',   2, 3, NULL, NULL, true,  false, '{}', '{}')
 ON CONFLICT (handle) DO NOTHING;
 
 -- Families
 INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
-('F001', 'P001', 'P014', '{"P002","P003","P004"}'),
-('F002', 'P002', NULL,   '{"P005","P006"}'),
-('F003', 'P003', NULL,   '{"P007","P008"}'),
-('F004', 'P004', NULL,   '{"P009"}'),
-('F005', 'P005', 'P015', '{"P010","P011","P013"}'),
-('F006', 'P007', NULL,   '{"P012"}')
+('F001', 'P001', 'P014', '{"P002"}'),
+('F002', 'P002', NULL,   '{"P005","P006","P009","P010","P011"}'),
+('F005', 'P005', 'P015', '{"P013"}')
 ON CONFLICT (handle) DO NOTHING;
 
 
