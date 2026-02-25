@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Search, Filter } from 'lucide-react';
+import { Users, Search, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/components/auth-provider';
+import { AddMemberDialog } from '@/components/add-member-dialog';
 import {
     Table,
     TableBody,
@@ -29,36 +31,38 @@ interface Person {
 
 export default function PeopleListPage() {
     const router = useRouter();
+    const { canEdit } = useAuth();
     const [people, setPeople] = useState<Person[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [genderFilter, setGenderFilter] = useState<number | null>(null);
     const [livingFilter, setLivingFilter] = useState<boolean | null>(null);
+    const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-    useEffect(() => {
-        const fetchPeople = async () => {
-            try {
-                const { supabase } = await import('@/lib/supabase');
-                const { data, error } = await supabase
-                    .from('people')
-                    .select('handle, display_name, gender, birth_year, death_year, is_living, is_privacy_filtered')
-                    .order('display_name', { ascending: true });
-                if (!error && data) {
-                    setPeople(data.map((row: Record<string, unknown>) => ({
-                        handle: row.handle as string,
-                        displayName: row.display_name as string,
-                        gender: row.gender as number,
-                        birthYear: row.birth_year as number | undefined,
-                        deathYear: row.death_year as number | undefined,
-                        isLiving: row.is_living as boolean,
-                        isPrivacyFiltered: row.is_privacy_filtered as boolean,
-                    })));
-                }
-            } catch { /* ignore */ }
-            setLoading(false);
-        };
-        fetchPeople();
+    const fetchPeople = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data, error } = await supabase
+                .from('people')
+                .select('handle, display_name, gender, birth_year, death_year, is_living, is_privacy_filtered')
+                .order('display_name', { ascending: true });
+            if (!error && data) {
+                setPeople(data.map((row: Record<string, unknown>) => ({
+                    handle: row.handle as string,
+                    displayName: row.display_name as string,
+                    gender: row.gender as number,
+                    birthYear: row.birth_year as number | undefined,
+                    deathYear: row.death_year as number | undefined,
+                    isLiving: row.is_living as boolean,
+                    isPrivacyFiltered: row.is_privacy_filtered as boolean,
+                })));
+            }
+        } catch { /* ignore */ }
+        setLoading(false);
     }, []);
+
+    useEffect(() => { fetchPeople(); }, [fetchPeople]);
 
     const filtered = people.filter((p) => {
         if (search && !p.displayName.toLowerCase().includes(search.toLowerCase())) return false;
@@ -69,13 +73,27 @@ export default function PeopleListPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                    <Users className="h-6 w-6" />
-                    Thành viên gia phả
-                </h1>
-                <p className="text-muted-foreground">{people.length} người trong gia phả</p>
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <Users className="h-6 w-6" />
+                        Thành viên gia phả
+                    </h1>
+                    <p className="text-muted-foreground">{people.length} người trong gia phả</p>
+                </div>
+                {canEdit && (
+                    <Button id="open-add-member-btn" onClick={() => setAddDialogOpen(true)}>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Thêm thành viên
+                    </Button>
+                )}
             </div>
+
+            <AddMemberDialog
+                open={addDialogOpen}
+                onOpenChange={setAddDialogOpen}
+                onSuccess={fetchPeople}
+            />
 
             {/* Filters */}
             <div className="flex flex-wrap gap-3 items-center">

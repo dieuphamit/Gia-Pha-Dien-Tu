@@ -442,3 +442,108 @@ export async function addFamily(family: {
     }
     return { error: null };
 }
+
+/** Generate a unique person handle (e.g. P031, P032...) */
+export async function generatePersonHandle(): Promise<string> {
+    const { data } = await supabase
+        .from('people')
+        .select('handle')
+        .like('handle', 'P%')
+        .order('handle', { ascending: false });
+
+    if (!data || data.length === 0) return 'P001';
+
+    const nums = data
+        .map((r: { handle: string }) => parseInt(r.handle.replace(/\D/g, ''), 10))
+        .filter((n: number) => !isNaN(n));
+
+    const max = nums.length > 0 ? Math.max(...nums) : 0;
+    const next = max + 1;
+    return `P${String(next).padStart(3, '0')}`;
+}
+
+/** Generate a unique family handle (e.g. F010, F011...) */
+export async function generateFamilyHandle(): Promise<string> {
+    const { data } = await supabase
+        .from('families')
+        .select('handle')
+        .like('handle', 'F%')
+        .order('handle', { ascending: false });
+
+    if (!data || data.length === 0) return 'F001';
+
+    const nums = data
+        .map((r: { handle: string }) => parseInt(r.handle.replace(/\D/g, ''), 10))
+        .filter((n: number) => !isNaN(n));
+
+    const max = nums.length > 0 ? Math.max(...nums) : 0;
+    const next = max + 1;
+    return `F${String(next).padStart(3, '0')}`;
+}
+
+/** Fetch all families with display info (for dropdown) */
+export async function fetchFamiliesForSelect(): Promise<Array<{
+    handle: string;
+    fatherName?: string;
+    motherName?: string;
+    label: string;
+}>> {
+    const { data: families } = await supabase
+        .from('families')
+        .select('handle, father_handle, mother_handle')
+        .order('handle');
+
+    if (!families) return [];
+
+    // Collect all person handles to lookup
+    const personHandles = new Set<string>();
+    families.forEach((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
+        if (f.father_handle) personHandles.add(f.father_handle);
+        if (f.mother_handle) personHandles.add(f.mother_handle);
+    });
+
+    let nameMap: Record<string, string> = {};
+    if (personHandles.size > 0) {
+        const { data: people } = await supabase
+            .from('people')
+            .select('handle, display_name')
+            .in('handle', Array.from(personHandles));
+        if (people) {
+            people.forEach((p: { handle: string; display_name: string }) => {
+                nameMap[p.handle] = p.display_name;
+            });
+        }
+    }
+
+    return families.map((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
+        const fatherName = f.father_handle ? nameMap[f.father_handle] : undefined;
+        const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;
+        const parts = [fatherName, motherName].filter(Boolean);
+        const label = parts.length > 0
+            ? `${f.handle} — ${parts.join(' & ')}`
+            : f.handle;
+        return { handle: f.handle, fatherName, motherName, label };
+    });
+}
+
+/** Fetch all people minimal info (for dropdown) */
+export async function fetchPeopleForSelect(): Promise<Array<{
+    handle: string;
+    displayName: string;
+    generation: number;
+    gender: number;
+}>> {
+    const { data } = await supabase
+        .from('people')
+        .select('handle, display_name, generation, gender')
+        .order('generation')
+        .order('display_name');
+
+    if (!data) return [];
+    return data.map((r: { handle: string; display_name: string; generation: number; gender: number }) => ({
+        handle: r.handle,
+        displayName: r.display_name,
+        generation: r.generation,
+        gender: r.gender,
+    }));
+}

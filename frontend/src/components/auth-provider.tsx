@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
-export type UserRole = 'admin' | 'member' | null;
+export type UserRole = 'admin' | 'editor' | 'member' | 'viewer' | null;
 
 interface Profile {
     id: string;
@@ -13,6 +13,7 @@ interface Profile {
     role: UserRole;
     person_handle: string | null;
     avatar_url: string | null;
+    status?: string;
 }
 
 interface AuthState {
@@ -22,6 +23,9 @@ interface AuthState {
     role: UserRole;
     loading: boolean;
     isAdmin: boolean;
+    isEditor: boolean;
+    canEdit: boolean;      // admin hoặc editor: thêm/sửa trực tiếp
+    canManage: boolean;    // chỉ admin: phân quyền, xóa tài khoản
     isMember: boolean;
     isLoggedIn: boolean;
     signIn: (email: string, password: string) => Promise<{ error?: string }>;
@@ -142,7 +146,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         <AuthContext.Provider value={{
             user, session, profile, role, loading,
             isAdmin: role === 'admin',
-            isMember: role === 'member' || role === 'admin',
+            isEditor: role === 'editor',
+            canEdit: role === 'admin' || role === 'editor',
+            canManage: role === 'admin',
+            isMember: role === 'member' || role === 'editor' || role === 'admin',
             isLoggedIn: !!user,
             signIn, signUp, signOut, refreshProfile,
         }}>

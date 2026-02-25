@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2 } from 'lucide-react';
+import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -31,13 +31,24 @@ import {
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { AddMemberDialog } from '@/components/add-member-dialog';
 
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     editor: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
     archivist: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     member: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+    viewer: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
     guest: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+    admin: 'Admin',
+    editor: 'Editor',
+    archivist: 'Archivist',
+    member: 'Member',
+    viewer: 'Viewer',
+    guest: 'Guest',
 };
 
 interface ProfileUser {
@@ -70,8 +81,10 @@ export default function AdminUsersPage() {
     const [users, setUsers] = useState<ProfileUser[]>([]);
     const [invites, setInvites] = useState<InviteLink[]>([]);
     const [loading, setLoading] = useState(true);
+    const [inviteTableExists, setInviteTableExists] = useState(true);
 
     const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+    const [addMemberOpen, setAddMemberOpen] = useState(false);
     const [inviteRole, setInviteRole] = useState('member');
     const [inviteMaxUses, setInviteMaxUses] = useState(1);
     const [copied, setCopied] = useState<string | null>(null);
@@ -96,8 +109,14 @@ export default function AdminUsersPage() {
                 .from('invite_links')
                 .select('*')
                 .order('created_at', { ascending: false });
-            if (!error && data) setInvites(data);
-        } catch { /* ignore */ }
+            if (error) {
+                // Table may not exist yet
+                setInviteTableExists(false);
+            } else if (data) {
+                setInvites(data);
+                setInviteTableExists(true);
+            }
+        } catch { setInviteTableExists(false); }
     }, []);
 
     useEffect(() => {
@@ -214,6 +233,10 @@ export default function AdminUsersPage() {
                     <Button variant="outline" size="icon" onClick={() => { fetchUsers(); fetchInvites(); }}>
                         <RefreshCw className="h-4 w-4" />
                     </Button>
+                    <Button variant="outline" id="admin-add-member-btn" onClick={() => setAddMemberOpen(true)}>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Thêm thành viên
+                    </Button>
                     <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); else setInviteDialogOpen(true); }}>
                         <DialogTrigger asChild>
                             <Button>
@@ -235,7 +258,7 @@ export default function AdminUsersPage() {
                                         onChange={e => setInviteRole(e.target.value)}
                                     >
                                         <option value="member">Member — Xem và đề xuất chỉnh sửa</option>
-                                        <option value="editor">Editor — Chỉnh sửa trực tiếp</option>
+                                        <option value="editor">Editor — Chỉnh sửa trực tiếp + thêm thành viên</option>
                                         <option value="archivist">Archivist — Quản lý tư liệu</option>
                                     </select>
                                 </div>
@@ -249,7 +272,14 @@ export default function AdminUsersPage() {
                                         max={100}
                                     />
                                 </div>
-                                <Button className="w-full" onClick={handleCreateInvite}>
+                                {!inviteTableExists && (
+                                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 text-amber-700 dark:text-amber-400 text-xs">
+                                        ⚠️ Bảng <code>invite_links</code> chưa tồn tại. Hãy chạy file
+                                        <code className="mx-1">migration-add-editor-role.sql</code>
+                                        trong Supabase Dashboard trước.
+                                    </div>
+                                )}
+                                <Button className="w-full" onClick={handleCreateInvite} disabled={!inviteTableExists}>
                                     <Link2 className="mr-2 h-4 w-4" />
                                     Tạo link mời
                                 </Button>
@@ -258,6 +288,12 @@ export default function AdminUsersPage() {
                     </Dialog>
                 </div>
             </div>
+
+            <AddMemberDialog
+                open={addMemberOpen}
+                onOpenChange={setAddMemberOpen}
+                onSuccess={fetchUsers}
+            />
 
             {/* Users Table */}
             <Card>
@@ -289,7 +325,7 @@ export default function AdminUsersPage() {
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>
                                             <Badge variant="secondary" className={ROLE_COLORS[user.role] || ''}>
-                                                {user.role.toUpperCase()}
+                                                {ROLE_LABELS[user.role] || user.role}
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
@@ -307,13 +343,16 @@ export default function AdminUsersPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'admin')}>
-                                                        Đặt Admin
+                                                        🔴 Đặt Admin
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'editor')}>
-                                                        Đặt Editor
+                                                        🔵 Đặt Editor
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'member')}>
-                                                        Đặt Member
+                                                        🟢 Đặt Member
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'viewer')}>
+                                                        ⚪ Đặt Viewer
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem
