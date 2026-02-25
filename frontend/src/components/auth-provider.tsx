@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
-export type UserRole = 'admin' | 'editor' | 'member' | 'viewer' | null;
+export type UserRole = 'admin' | 'editor' | 'member' | null;
 
 interface Profile {
     id: string;
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 id: u.id,
                 email: u.email || '',
                 display_name: u.user_metadata?.display_name || u.email?.split('@')[0] || '',
-                role: 'viewer',
+                role: 'member',
                 status: 'pending',
             });
         }
@@ -143,13 +143,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (error.message.includes('already registered')) {
                 return { error: 'Email đã được đăng ký. Hãy đăng nhập.' };
             }
-            // Trigger failure or DB error — auth user may still have been created
-            if (error.message.includes('Database error saving new user') || error.message.includes('database')) {
-                return { error: 'Tài khoản đã được tạo. Đang chờ quản trị viên xét duyệt trước khi bạn có thể đăng nhập.' };
-            }
             return { error: error.message };
         }
-        // Sign out immediately after registration — user must wait for admin approval
+        if (!data.user) {
+            return { error: 'Đăng ký không thành công. Vui lòng thử lại.' };
+        }
+        // Explicitly create profile via server API (bypasses trigger/constraint issues)
+        await fetch('/api/create-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: data.user.id, email: data.user.email }),
+        });
+        // Sign out immediately — user must wait for admin approval
         if (data.session) {
             await supabase.auth.signOut();
         }
@@ -174,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isEditor: role === 'editor',
             canEdit: role === 'admin' || role === 'editor',
             canManage: role === 'admin',
-            isMember: role === 'member' || role === 'editor' || role === 'admin',
+            isMember: role === 'member',
             isLoggedIn: !!user,
             signIn, signUp, signOut, refreshProfile,
         }}>

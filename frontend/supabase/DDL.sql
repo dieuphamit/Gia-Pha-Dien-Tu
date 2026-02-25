@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     id           UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email        TEXT        UNIQUE NOT NULL,
     display_name TEXT,
-    role         TEXT        NOT NULL DEFAULT 'member'
+    role         TEXT        NOT NULL DEFAULT 'viewer'
                              CHECK (role IN ('admin', 'editor', 'member', 'viewer')),
     status       TEXT        NOT NULL DEFAULT 'pending'
                              CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 -- Tự động tạo profile khi user đăng ký
+-- Fault-tolerant: lỗi trigger không block quá trình đăng ký,
+-- profile sẽ được tạo lại qua API route nếu trigger fail.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -108,14 +110,19 @@ DECLARE
 BEGIN
     user_email := COALESCE(NEW.email, NEW.raw_user_meta_data->>'email', '');
     IF user_email != '' THEN
-        INSERT INTO profiles (id, email, role, status)
-        VALUES (
-            NEW.id,
-            user_email,
-            CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'admin'  ELSE 'member'  END,
-            CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'active' ELSE 'pending' END
-        )
-        ON CONFLICT (email) DO UPDATE SET id = NEW.id;
+        BEGIN
+            INSERT INTO profiles (id, email, role, status)
+            VALUES (
+                NEW.id,
+                user_email,
+                CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'admin'  ELSE 'viewer' END,
+                CASE WHEN user_email = 'pqdieu.it@gmail.com' THEN 'active' ELSE 'pending' END
+            )
+            ON CONFLICT (email) DO UPDATE SET id = EXCLUDED.id;
+        EXCEPTION WHEN OTHERS THEN
+            -- Bỏ qua lỗi, profile sẽ được tạo qua API route
+            NULL;
+        END;
     END IF;
     RETURN NEW;
 END;

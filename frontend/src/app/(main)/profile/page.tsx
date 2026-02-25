@@ -29,14 +29,12 @@ const ROLE_LABELS: Record<string, string> = {
     admin: 'Quản trị viên',
     editor: 'Biên tập viên',
     member: 'Thành viên',
-    viewer: 'Khách',
 };
 
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
     editor: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     member: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    viewer: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
 
 export default function ProfilePage() {

@@ -38,19 +38,13 @@ type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     editor: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-    archivist: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     member: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-    viewer: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-    guest: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
 };
 
 const ROLE_LABELS: Record<string, string> = {
     admin: 'Admin',
     editor: 'Editor',
-    archivist: 'Archivist',
-    member: 'Member',
-    viewer: 'Viewer',
-    guest: 'Guest',
+    member: 'Thành viên',
 };
 
 interface ProfileUser {
@@ -263,9 +257,8 @@ export default function AdminUsersPage() {
                                         value={inviteRole}
                                         onChange={e => setInviteRole(e.target.value)}
                                     >
-                                        <option value="member">Member — Xem và đề xuất chỉnh sửa</option>
-                                        <option value="editor">Editor — Chỉnh sửa trực tiếp + thêm thành viên</option>
-                                        <option value="archivist">Archivist — Quản lý tư liệu</option>
+                                        <option value="member">Thành viên — Xem thông tin</option>
+                                        <option value="editor">Editor — Thêm/sửa thành viên, bảng tin, sự kiện</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">
@@ -416,10 +409,7 @@ export default function AdminUsersPage() {
                                                         🔵 Đặt Editor
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'member')}>
-                                                        🟢 Đặt Member
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'viewer')}>
-                                                        ⚪ Đặt Viewer
+                                                        🟢 Đặt Thành viên
                                                     </DropdownMenuItem>
                                                     {user.status !== 'pending' && (
                                                         <>
