@@ -8,11 +8,6 @@ import {
     Clock,
     Users,
     Plus,
-    ChevronLeft,
-    ChevronRight,
-    Check,
-    X,
-    HelpCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -146,7 +141,7 @@ function EventCard({ event }: { event: EventItem }) {
 }
 
 export default function EventsPage() {
-    const { isLoggedIn } = useAuth();
+    const { isAdmin } = useAuth();
     const [events, setEvents] = useState<EventItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -174,7 +169,7 @@ export default function EventsPage() {
                     </h1>
                     <p className="text-muted-foreground">Lịch các hoạt động dòng họ</p>
                 </div>
-                {isLoggedIn && <CreateEventDialog onCreated={fetchEvents} />}
+                {isAdmin && <CreateEventDialog onCreated={fetchEvents} />}
             </div>
 
             {loading ? (

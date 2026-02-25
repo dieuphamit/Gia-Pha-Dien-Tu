@@ -48,7 +48,7 @@ interface Comment {
 // === Post Composer ===
 
 function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
-    const { user, isLoggedIn } = useAuth();
+    const { user, isAdmin } = useAuth();
     const [body, setBody] = useState('');
     const [title, setTitle] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -75,7 +75,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
         }
     };
 
-    if (!isLoggedIn) return null;
+    if (!isAdmin) return null;
 
     return (
         <Card>
@@ -121,7 +121,7 @@ function CommentSection({ postId }: { postId: string }) {
     const fetchComments = useCallback(async () => {
         setLoading(true);
         const { data } = await supabase
-            .from('comments')
+            .from('post_comments')
             .select('*, author:profiles(email, display_name)')
             .eq('post_id', postId)
             .order('created_at', { ascending: true });
@@ -133,7 +133,7 @@ function CommentSection({ postId }: { postId: string }) {
 
     const handleSubmit = async () => {
         if (!newComment.trim() || !user) return;
-        const { error } = await supabase.from('comments').insert({
+        const { error } = await supabase.from('post_comments').insert({
             post_id: postId,
             author_id: user.id,
             body: newComment.trim(),

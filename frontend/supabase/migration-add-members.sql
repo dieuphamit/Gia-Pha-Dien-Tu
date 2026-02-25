@@ -114,18 +114,112 @@ INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
 ON CONFLICT (handle) DO NOTHING;
 
 
--- ── 8. FIX F009 nếu đã tồn tại sai ──────────────────────
+-- ── 8. FIX families đã tồn tại sai (override ON CONFLICT) ─
+
+-- F007: đảm bảo đủ 5 con
+UPDATE families
+SET father_handle = 'P018',
+    mother_handle = 'P006',
+    children      = '{"P019","P020","P021","P027","P024"}'
+WHERE handle = 'F007';
+
+-- F008: cha là Nguyễn Ngọc Dũng (P026), KHÔNG phải Phạm Trọng Nhân (P013)
+UPDATE families
+SET father_handle = 'P026',
+    mother_handle = 'P021',
+    children      = '{"P022","P023"}'
+WHERE handle = 'F008';
+
+-- F009: Nguyễn Tạo + Nguyễn Thị Thuỳ Tiên
 UPDATE families
 SET father_handle = 'P025',
     mother_handle = 'P027',
     children      = '{}'
 WHERE handle = 'F009';
 
--- ── 9. Xóa F010 nếu đã tạo nhầm ──────────────────────────
+-- F006: Phạm Quang Diệu + Ngô Huỳnh Yến Tiên → Phạm Tiên Đan
+UPDATE families
+SET father_handle = 'P011',
+    mother_handle = 'P016',
+    children      = '{"P017"}'
+WHERE handle = 'F006';
+
+-- ── 9. FIX people đã tồn tại sai (override ON CONFLICT) ───
+
+-- P013 Phạm Trọng Nhân: CHƯA có vợ/con
+UPDATE people SET families = '{}' WHERE handle = 'P013';
+
+-- P021 Nguyễn Nữ Hoài Trâm: con của F007, vợ trong F008
+UPDATE people
+SET families        = '{"F008"}',
+    parent_families = '{"F007"}'
+WHERE handle = 'P021';
+
+-- P026 Nguyễn Ngọc Dũng: cha trong F008
+UPDATE people SET families = '{"F008"}' WHERE handle = 'P026';
+
+-- P025 Nguyễn Tạo: cha trong F009
+UPDATE people SET families = '{"F009"}' WHERE handle = 'P025';
+
+-- P027 Nguyễn Thị Thuỳ Tiên: con F007, mẹ trong F009
+UPDATE people
+SET families        = '{"F009"}',
+    parent_families = '{"F007"}'
+WHERE handle = 'P027';
+
+-- P024 Nguyễn Đức Triều: con F007
+UPDATE people SET parent_families = '{"F007"}' WHERE handle = 'P024';
+
+-- P022, P023: con F008
+UPDATE people SET parent_families = '{"F008"}' WHERE handle = 'P022';
+UPDATE people SET parent_families = '{"F008"}' WHERE handle = 'P023';
+
+-- ── 10. Xóa F010 nếu đã tạo nhầm ─────────────────────────
 DELETE FROM families WHERE handle = 'F010';
 
 
--- ── 10. Verify ────────────────────────────────────────────
+-- ── 11. SWAP P020 ↔ P027 (sắp xếp lại con F007 theo thứ tự từ lớn đến nhỏ) ──
+-- Thứ tự đúng: Thuỳ Trang (1996) > Thuỳ Tiên (1998) > Hoài Trâm (2001) > Đức Triều (2003) > Đăng Doanh (2009)
+
+-- P020 → Nguyễn Thị Thuỳ Tiên (con thứ 2, sinh 1998, có chồng F009)
+UPDATE people SET
+    display_name    = 'Nguyễn Thị Thuỳ Tiên',
+    gender          = 2,
+    birth_year      = 1998,
+    current_address = 'Đắk Mil',
+    occupation      = 'NV Bưu Điện',
+    families        = '{"F009"}',
+    parent_families = '{"F007"}'
+WHERE handle = 'P020';
+
+-- P027 → Nguyễn Phạm Đăng Doanh (con út, sinh 2009, chưa có gia đình)
+UPDATE people SET
+    display_name    = 'Nguyễn Phạm Đăng Doanh',
+    gender          = 1,
+    birth_year      = 2009,
+    current_address = 'Đồng Nai',
+    occupation      = 'Học sinh',
+    families        = '{}',
+    parent_families = '{"F007"}'
+WHERE handle = 'P027';
+
+-- F009: mẹ là P020 (Thuỳ Tiên, handle mới) thay vì P027
+UPDATE families
+SET father_handle = 'P025',
+    mother_handle = 'P020',
+    children      = '{}'
+WHERE handle = 'F009';
+
+-- P025 (Nguyễn Tạo): families=[F009] vẫn đúng, đảm bảo parent_families trống
+UPDATE people SET families = '{"F009"}', parent_families = '{}' WHERE handle = 'P025';
+
+-- F007: children theo đúng thứ tự lớn → nhỏ
+UPDATE families
+SET children = '{"P019","P020","P021","P024","P027"}'
+WHERE handle = 'F007';
+
+
+-- ── 12. Verify ────────────────────────────────────────────
 SELECT handle, display_name, gender, generation, families, parent_families
 FROM people ORDER BY generation, handle;
 

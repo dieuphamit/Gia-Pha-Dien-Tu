@@ -273,12 +273,12 @@ INSERT INTO people (handle, display_name, gender, generation, birth_year, death_
 ('P013', 'Phạm Trọng Nhân',         1, 4, 1995, NULL, true,  true,  '{}',       '{"F005"}',  NULL,       NULL),
 -- Con F006 (Phạm Quang Diệu + Ngô Huỳnh Yến Tiên)
 ('P017', 'Phạm Tiên Đan',            2, 4, 2024, NULL, true,  true,  '{}',       '{"F006"}',  'Japan',    'Em bé'),
--- 5 con F007 (Nguyễn Phước Hải + Phạm Thị Hoài Nga)
+-- 5 con F007 (thứ tự lớn → nhỏ theo năm sinh)
 ('P019', 'Nguyễn Nữ Thuỳ Trang',    2, 4, 1996, NULL, true,  false, '{}',       '{"F007"}',  'Đồng Nai', 'Kế Toán'),
-('P020', 'Nguyễn Phạm Đăng Doanh',  1, 4, 2009, NULL, true,  false, '{}',       '{"F007"}',  'Đồng Nai', 'Học sinh'),
+('P020', 'Nguyễn Thị Thuỳ Tiên',    2, 4, 1998, NULL, true,  false, '{"F009"}', '{"F007"}',  'Đắk Mil',  'NV Bưu Điện'),
 ('P021', 'Nguyễn Nữ Hoài Trâm',     2, 4, 2001, NULL, true,  false, '{"F008"}', '{"F007"}',  'TP HCM',   'NV Văn Phòng'),
-('P027', 'Nguyễn Thị Thuỳ Tiên',    2, 4, 1998, NULL, true,  false, '{"F009"}', '{"F007"}',  'Đắk Mil',  'NV Bưu Điện'),
 ('P024', 'Nguyễn Đức Triều',         1, 4, 2003, NULL, true,  false, '{}',       '{"F007"}',  'TP HCM',   'tự do'),
+('P027', 'Nguyễn Phạm Đăng Doanh',  1, 4, 2009, NULL, true,  false, '{}',       '{"F007"}',  'Đồng Nai', 'Học sinh'),
 -- Chồng/vợ ngoại tộc Đời 4
 ('P026', 'Nguyễn Ngọc Dũng',         1, 4, 1997, NULL, true,  false, '{"F008"}', '{}',        'Đắk Mil',  'tự do'),
 ('P025', 'Nguyễn Tạo',               1, 4, 1998, NULL, true,  false, '{"F009"}', '{}',        'Đắk Mil',  'tự do'),
