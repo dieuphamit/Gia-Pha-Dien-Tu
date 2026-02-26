@@ -173,6 +173,32 @@ async function applyAddPerson(
         .single();
 
     if (error) return { ok: false, error: `Lỗi tạo thành viên: ${error.message}` };
+
+    // Handle initial spouse setup
+    if (payload.spouseHandle) {
+        const { generateFamilyHandle, addFamily, addPersonAsSpouse } = await import('@/lib/supabase-data');
+        const familyHandle = await generateFamilyHandle();
+
+        let fatherHandle = payload.gender === 1 ? handle : payload.spouseHandle;
+        let motherHandle = payload.gender === 2 ? handle : payload.spouseHandle;
+
+        // Ensure the imported generateFamilyHandle works outside typical client context or ensure it takes no argument
+        const { error: famError } = await addFamily({
+            handle: familyHandle,
+            fatherHandle,
+            motherHandle,
+            children: []
+        });
+
+        if (!famError) {
+            // Update people.families for both
+            await addPersonAsSpouse(handle, familyHandle, payload.gender === 2 ? 'mother' : 'father');
+            await addPersonAsSpouse(payload.spouseHandle, familyHandle, payload.gender === 2 ? 'father' : 'mother');
+        } else {
+            console.error('Failed to create family with spouse:', famError);
+        }
+    }
+
     return { ok: true, insertedId: (data as { handle: string }).handle };
 }
 

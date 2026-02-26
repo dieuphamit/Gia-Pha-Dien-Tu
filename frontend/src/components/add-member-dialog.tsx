@@ -144,8 +144,8 @@ function StepInfo({
                                 type="button"
                                 onClick={() => onChange({ gender: g.v })}
                                 className={`flex-1 py-2 rounded-md border text-sm font-medium transition-all ${form.gender === g.v
-                                        ? 'bg-primary text-primary-foreground border-primary'
-                                        : 'bg-background hover:bg-muted'
+                                    ? 'bg-primary text-primary-foreground border-primary'
+                                    : 'bg-background hover:bg-muted'
                                     }`}
                             >
                                 {g.l}
@@ -264,6 +264,7 @@ function StepInfo({
 function StepRelation({
     personHandle,
     personName,
+    personGeneration,
     families,
     people,
     onDone,
@@ -271,6 +272,7 @@ function StepRelation({
 }: {
     personHandle: string;
     personName: string;
+    personGeneration: number;
     families: FamilyOption[];
     people: PersonOption[];
     onDone: (message: string) => void;
@@ -460,7 +462,7 @@ function StepRelation({
                             onChange={e => setNewFatherHandle(e.target.value)}
                         >
                             <option value="">-- Chưa có cha --</option>
-                            {people.filter(p => p.gender === 1).map(p => (
+                            {people.filter(p => p.gender === 1 && p.generation <= personGeneration).map(p => (
                                 <option key={p.handle} value={p.handle}>
                                     {p.displayName} ({p.handle}, Đ{p.generation})
                                 </option>
@@ -476,7 +478,7 @@ function StepRelation({
                             onChange={e => setNewMotherHandle(e.target.value)}
                         >
                             <option value="">-- Chưa có mẹ --</option>
-                            {people.filter(p => p.gender === 2).map(p => (
+                            {people.filter(p => p.gender === 2 && p.generation <= personGeneration).map(p => (
                                 <option key={p.handle} value={p.handle}>
                                     {p.displayName} ({p.handle}, Đ{p.generation})
                                 </option>
@@ -693,6 +695,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                     <StepRelation
                         personHandle={createdHandle}
                         personName={form.displayName}
+                        personGeneration={form.generation}
                         families={families}
                         people={people}
                         onDone={handleDone}

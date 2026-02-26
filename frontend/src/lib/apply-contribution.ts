@@ -23,6 +23,7 @@ export interface AddPersonPayload {
     phone?: string;
     email?: string;
     relationHint?: string;
+    spouseHandle?: string;
 }
 
 export interface AddEventPayload {

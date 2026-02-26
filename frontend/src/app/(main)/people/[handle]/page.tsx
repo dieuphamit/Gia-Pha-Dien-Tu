@@ -64,9 +64,12 @@ export default function PersonProfilePage() {
     const [relError, setRelError] = useState('');
     const [saveError, setSaveError] = useState('');
     const [allFamilies, setAllFamilies] = useState<FamilyOption[]>([]);
+    const [allChildrenOptions, setAllChildrenOptions] = useState<FamilyOption[]>([]);
     const [familyInfoMap, setFamilyInfoMap] = useState<Map<string, string>>(new Map());
     const [selectedParentFamily, setSelectedParentFamily] = useState('');
-    const [selectedSpouseFamily, setSelectedSpouseFamily] = useState('');
+    const [selectedChildrenHandles, setSelectedChildrenHandles] = useState<string[]>([]);
+    const [allSpouseOptions, setAllSpouseOptions] = useState<FamilyOption[]>([]);
+    const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, surname: '', firstName: '', nickName: '',
         birthYear: '', deathYear: '', isLiving: true,
@@ -165,7 +168,8 @@ export default function PersonProfilePage() {
             notes: person.notes || '',
         });
         setSelectedParentFamily('');
-        setSelectedSpouseFamily('');
+        setSelectedChildrenHandles([]);
+        setSelectedSpouseHandle('');
         loadFamilyOptions();
         setEditing(true);
     };
@@ -174,10 +178,11 @@ export default function PersonProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const [{ data: fams }, { data: people }] = await Promise.all([
             supabase.from('families').select('handle, father_handle, mother_handle, children').order('handle'),
-            supabase.from('people').select('handle, display_name'),
+            supabase.from('people').select('handle, display_name, generation, gender'),
         ]);
         if (!fams) return;
-        const nameMap = new Map((people || []).map(p => [p.handle, p.display_name]));
+        const typedPeople = (people || []) as Array<{ handle: string; display_name: string; generation?: number; gender?: number }>;
+        const nameMap = new Map(typedPeople.map(p => [p.handle, p.display_name]));
         setAllFamilies(fams.map(f => {
             const parts: string[] = [];
             if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
@@ -187,6 +192,37 @@ export default function PersonProfilePage() {
                 : `${f.handle} (chưa có thành viên)`;
             return { handle: f.handle, label };
         }));
+
+        const currentPerson = await supabase.from('people').select('generation, gender').eq('handle', handle).single();
+        const currentPersonData = currentPerson?.data as { generation?: number, gender?: number } | undefined;
+        const pGen = currentPersonData?.generation;
+
+        setAllChildrenOptions(
+            typedPeople
+                .filter(p => !pGen || (p.generation && p.generation > pGen))
+                .map(p => ({
+                    handle: p.handle,
+                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
+                }))
+        );
+
+        setAllSpouseOptions(
+            typedPeople
+                .filter(p => !pGen || (p.generation && p.generation <= pGen && p.gender !== currentPersonData?.gender && p.gender !== 0 && currentPersonData?.gender !== 0))
+                .map(p => ({
+                    handle: p.handle,
+                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
+                }))
+        );
+
+        setAllSpouseOptions(
+            (people || [])
+                .filter(p => !pGen || (p.generation && p.generation <= pGen && p.gender !== currentPerson?.data?.gender && p.gender !== 0 && currentPerson?.data?.gender !== 0))
+                .map(p => ({
+                    handle: p.handle,
+                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
+                }))
+        );
     };
 
     const handleSave = async () => {
@@ -248,13 +284,41 @@ export default function PersonProfilePage() {
         setRelLoading(false);
     };
 
-    const handleAddSpouse = async () => {
-        if (!selectedSpouseFamily || !person) return;
+    const handleAddChildren = async () => {
+        if (selectedChildrenHandles.length === 0 || !person) return;
         setRelLoading(true);
         setRelError('');
-        const role = person.gender === 2 ? 'mother' : 'father';
-        const { error } = await addPersonAsSpouse(handle, selectedSpouseFamily, role);
-        if (error) { setRelError(error); } else { setSelectedSpouseFamily(''); await fetchPerson(); }
+
+        let targetFamilyHandle = '';
+        if (person.families && person.families.length > 0) {
+            targetFamilyHandle = person.families[0];
+        } else {
+            const { generateFamilyHandle, addFamily } = await import('@/lib/supabase-data');
+            targetFamilyHandle = await generateFamilyHandle();
+            const role = person.gender === 2 ? 'mother' : 'father';
+            const { error: famError } = await addFamily({
+                handle: targetFamilyHandle,
+                [role === 'mother' ? 'motherHandle' : 'fatherHandle']: handle,
+                children: []
+            });
+            if (famError) {
+                setRelError(famError);
+                setRelLoading(false);
+                return;
+            }
+        }
+
+        const { addPersonAsChild } = await import('@/lib/supabase-data');
+        for (const childHandle of selectedChildrenHandles) {
+            const { error } = await addPersonAsChild(childHandle, targetFamilyHandle);
+            if (error) {
+                setRelError(error);
+                break;
+            }
+        }
+
+        setSelectedChildrenHandles([]);
+        await fetchPerson();
         setRelLoading(false);
     };
 
@@ -265,6 +329,37 @@ export default function PersonProfilePage() {
         const role = person.gender === 2 ? 'mother' : 'father';
         const { error } = await removePersonFromSpouseFamily(handle, fh, role);
         if (error) { setRelError(error); }
+        await fetchPerson();
+        setRelLoading(false);
+    };
+
+    const handleAddSpouse = async () => {
+        if (!selectedSpouseHandle || !person) return;
+        setRelLoading(true);
+        setRelError('');
+
+        const { generateFamilyHandle, addFamily, addPersonAsSpouse } = await import('@/lib/supabase-data');
+        const familyHandle = await generateFamilyHandle();
+        const role = person.gender === 2 ? 'mother' : 'father';
+        const spouseRole = person.gender === 2 ? 'father' : 'mother';
+
+        const { error: famError } = await addFamily({
+            handle: familyHandle,
+            [role === 'mother' ? 'motherHandle' : 'fatherHandle']: handle,
+            [spouseRole === 'mother' ? 'motherHandle' : 'fatherHandle']: selectedSpouseHandle,
+            children: []
+        });
+
+        if (famError) {
+            setRelError(famError);
+            setRelLoading(false);
+            return;
+        }
+
+        await addPersonAsSpouse(handle, familyHandle, role);
+        await addPersonAsSpouse(selectedSpouseHandle, familyHandle, spouseRole);
+
+        setSelectedSpouseHandle('');
         await fetchPerson();
         setRelLoading(false);
     };
@@ -576,45 +671,69 @@ export default function PersonProfilePage() {
                             <Separator />
 
                             {/* Gia đình vợ/chồng */}
-                            <div className="space-y-2">
-                                <p className="text-sm font-medium">
-                                    Gia đình vợ/chồng (families) — vai trò: {person?.gender === 2 ? 'Mẹ' : 'Cha'}
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                    {(person?.families || []).map(fh => (
-                                        <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium" title={fh}>
-                                            {familyInfoMap.get(fh) || fh}
-                                            <button
-                                                type="button"
-                                                className="ml-1 text-muted-foreground hover:text-destructive"
-                                                onClick={() => handleRemoveSpouse(fh)}
-                                                disabled={relLoading}
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </button>
-                                        </span>
-                                    ))}
-                                    {(person?.families || []).length === 0 && (
-                                        <span className="text-xs text-muted-foreground">Chưa có</span>
-                                    )}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-sm font-medium mb-2">Danh sách gia đình đã có (Vợ/Chồng/Con)</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(person?.families || []).map(fh => (
+                                            <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium" title={fh}>
+                                                {familyInfoMap.get(fh) || fh}
+                                                <button
+                                                    type="button"
+                                                    className="ml-1 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleRemoveSpouse(fh)}
+                                                    disabled={relLoading}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                        {(person?.families || []).length === 0 && (
+                                            <span className="text-xs text-muted-foreground">Chưa có</span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <select
-                                        value={selectedSpouseFamily}
-                                        onChange={e => setSelectedSpouseFamily(e.target.value)}
-                                        className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                                    >
-                                        <option value="">— Chọn gia đình vợ/chồng —</option>
-                                        {allFamilies
-                                            .filter(f => !(person?.families || []).includes(f.handle))
-                                            .map(f => (
+
+                                <div className="space-y-2 pt-2 border-t">
+                                    <p className="text-sm font-medium">Thêm Vợ/Chồng (Tạo gia đình mới)</p>
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={selectedSpouseHandle}
+                                            onChange={e => setSelectedSpouseHandle(e.target.value)}
+                                            className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                                        >
+                                            <option value="">— Chọn Vợ/Chồng —</option>
+                                            {allSpouseOptions.map(f => (
                                                 <option key={f.handle} value={f.handle}>{f.label}</option>
-                                            ))
-                                        }
-                                    </select>
-                                    <Button size="sm" variant="outline" onClick={handleAddSpouse} disabled={relLoading || !selectedSpouseFamily}>
-                                        Thêm
-                                    </Button>
+                                            ))}
+                                        </select>
+                                        <Button size="sm" variant="outline" onClick={handleAddSpouse} disabled={relLoading || !selectedSpouseHandle}>
+                                            Thêm
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 pt-2 border-t">
+                                    <p className="text-sm font-medium">
+                                        Thêm con cái vào gia đình (Vai trò {person?.gender === 2 ? 'Mẹ' : 'Ba'})
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <select
+                                            multiple
+                                            value={selectedChildrenHandles}
+                                            onChange={e => setSelectedChildrenHandles(Array.from(e.target.selectedOptions, o => o.value))}
+                                            className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm min-h-[100px]"
+                                        >
+                                            {allChildrenOptions
+                                                .map(f => (
+                                                    <option key={f.handle} value={f.handle}>{f.label}</option>
+                                                ))
+                                            }
+                                        </select>
+                                        <Button size="sm" variant="outline" onClick={handleAddChildren} disabled={relLoading || selectedChildrenHandles.length === 0}>
+                                            Thêm
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>

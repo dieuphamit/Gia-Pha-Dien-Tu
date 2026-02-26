@@ -12,7 +12,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/auth-provider';
-import { submitContribution, fetchPeopleForSelect } from '@/lib/supabase-data';
+import { submitContribution, fetchPeopleForSelect, fetchFamiliesForSelect } from '@/lib/supabase-data';
 
 interface NewPersonPayload {
     displayName: string;
@@ -26,8 +26,9 @@ interface NewPersonPayload {
     phone?: string;
     email?: string;
     relationHint?: string;
-    parentHandle?: string;
+    parentFamilyHandle?: string;
     childrenHandles?: string[];
+    spouseHandle?: string;
 }
 
 export function ContributeNewPersonDialog() {
@@ -49,12 +50,15 @@ export function ContributeNewPersonDialog() {
     const [email, setEmail] = useState('');
     const [relationHint, setRelationHint] = useState('');
     const [peopleOptions, setPeopleOptions] = useState<Array<{ handle: string; displayName: string; generation: number; gender: number; }>>([]);
-    const [parentHandle, setParentHandle] = useState('');
+    const [familyOptions, setFamilyOptions] = useState<Array<{ handle: string; fatherName?: string; motherName?: string; label: string; }>>([]);
+    const [parentFamilyHandle, setParentFamilyHandle] = useState('');
     const [childrenHandles, setChildrenHandles] = useState<string[]>([]);
+    const [spouseHandle, setSpouseHandle] = useState('');
 
     useEffect(() => {
         if (open) {
             fetchPeopleForSelect().then(setPeopleOptions);
+            fetchFamiliesForSelect().then(setFamilyOptions);
         }
     }, [open]);
 
@@ -63,13 +67,13 @@ export function ContributeNewPersonDialog() {
         setBirthYear(''); setDeathYear(''); setIsLiving(true);
         setOccupation(''); setAddress(''); setPhone('');
         setEmail(''); setRelationHint(''); setError(''); setSent(false);
-        setParentHandle(''); setChildrenHandles([]);
+        setParentFamilyHandle(''); setChildrenHandles([]); setSpouseHandle('');
     };
 
     const handleSubmit = async () => {
         if (!displayName.trim()) { setError('Vui lòng nhập họ tên'); return; }
         if (!generation) { setError('Vui lòng nhập đời thứ'); return; }
-        if (!parentHandle) { setError('Vui lòng chọn mối quan hệ cha mẹ'); return; }
+        if (!parentFamilyHandle) { setError('Vui lòng chọn gia đình cha/mẹ'); return; }
         if (!user) { setError('Bạn cần đăng nhập'); return; }
 
         setSubmitting(true);
@@ -87,13 +91,17 @@ export function ContributeNewPersonDialog() {
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
             relationHint: relationHint.trim() || undefined,
-            parentHandle,
+            parentFamilyHandle,
             childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
+            spouseHandle: spouseHandle || undefined,
         };
 
-        const parentName = peopleOptions.find(p => p.handle === parentHandle)?.displayName || '';
+        const parentFamilyLabel = familyOptions.find(f => f.handle === parentFamilyHandle)?.label || '';
+        const spouseName = spouseHandle ? peopleOptions.find(p => p.handle === spouseHandle)?.displayName : '';
         const childrenNames = childrenHandles.map(h => peopleOptions.find(p => p.handle === h)?.displayName).filter(Boolean).join(', ');
-        const autoRelationHint = `Cha/mẹ: ${parentName} (${parentHandle})` + (childrenNames ? `\nCon cái: ${childrenNames}` : '');
+        const autoRelationHint = `Gia đình cha/mẹ: ${parentFamilyLabel}` +
+            (spouseName ? `\nVợ/Chồng: ${spouseName}` : '') +
+            (childrenNames ? `\nCon cái: ${childrenNames}` : '');
         const finalNote = relationHint.trim() ? `${autoRelationHint}\nChú thích thêm: ${relationHint.trim()}` : autoRelationHint;
 
         const { error: submitError } = await submitContribution({
@@ -230,16 +238,16 @@ export function ContributeNewPersonDialog() {
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-muted-foreground">Mối quan hệ cha mẹ (Bắt buộc) *</label>
+                            <label className="text-xs font-medium text-muted-foreground">Gia đình cha/mẹ (Bắt buộc) *</label>
                             <select
-                                value={parentHandle}
-                                onChange={e => setParentHandle(e.target.value)}
+                                value={parentFamilyHandle}
+                                onChange={e => setParentFamilyHandle(e.target.value)}
                                 className="w-full rounded-md border px-3 py-2 text-sm bg-background"
                             >
-                                <option value="">-- Chọn cha/mẹ --</option>
-                                {peopleOptions.map(p => (
-                                    <option key={p.handle} value={p.handle}>
-                                        {p.displayName} (Đời {p.generation}) - {p.handle}
+                                <option value="">-- Chọn gia đình cha/mẹ --</option>
+                                {familyOptions.map(f => (
+                                    <option key={f.handle} value={f.handle}>
+                                        {f.label}
                                     </option>
                                 ))}
                             </select>
@@ -265,6 +273,24 @@ export function ContributeNewPersonDialog() {
                         </div>
 
                         <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Vợ/Chồng (Tùy chọn)</label>
+                            <select
+                                value={spouseHandle}
+                                onChange={e => setSpouseHandle(e.target.value)}
+                                className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                            >
+                                <option value="">-- Chưa có / Không chọn --</option>
+                                {peopleOptions
+                                    .filter(p => generation && p.generation <= Number(generation) && p.gender !== gender && p.gender !== 0 && gender !== 0)
+                                    .map(p => (
+                                        <option key={p.handle} value={p.handle}>
+                                            {p.displayName} (Đời {p.generation}) - {p.handle}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-1.5">
                             <label className="text-xs font-medium text-muted-foreground">
                                 Quan hệ trong gia phả (chú thích thêm cho reviewer)
                             </label>
@@ -286,7 +312,7 @@ export function ContributeNewPersonDialog() {
                             <Button
                                 className="flex-1"
                                 onClick={handleSubmit}
-                                disabled={submitting || !displayName.trim() || !generation || !parentHandle}
+                                disabled={submitting || !displayName.trim() || !generation || !parentFamilyHandle}
                             >
                                 {submitting ? 'Đang gửi...' : <><Send className="w-4 h-4 mr-2" />Gửi đề xuất</>}
                             </Button>
