@@ -36,10 +36,15 @@ const navItems = [
     { href: '/media', label: 'Thư viện', icon: Image },
 ];
 
-const adminItems = [
+// Items dành cho editor + admin
+const editorItems = [
+    { href: '/admin/edits', label: 'Kiểm duyệt', icon: ClipboardCheck },
+];
+
+// Items chỉ dành cho admin
+const adminOnlyItems = [
     { href: '/admin/users', label: 'Quản lý Users', icon: Shield },
     { href: '/admin/questions', label: 'Câu hỏi xác minh', icon: HelpCircle },
-    { href: '/admin/edits', label: 'Kiểm duyệt', icon: ClipboardCheck },
     { href: '/admin/audit', label: 'Audit Log', icon: FileText },
     { href: '/admin/backup', label: 'Backup', icon: Database },
 ];
@@ -98,7 +103,39 @@ export function Sidebar() {
                     </Link>
                 )}
 
-                {/* Admin section — only visible for admin users */}
+                {/* Editor section — Kiểm duyệt, chỉ hiển thị cho editor (không phải admin) */}
+                {canEdit && !isAdmin && (
+                    <>
+                        {!collapsed && (
+                            <div className="pt-4 pb-2">
+                                <span className="px-3 text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                                    Biên tập
+                                </span>
+                            </div>
+                        )}
+                        {collapsed && <div className="border-t my-2" />}
+                        {editorItems.map((item) => {
+                            const isActive = pathname.startsWith(item.href);
+                            return (
+                                <Link key={item.href} href={item.href}>
+                                    <span
+                                        className={cn(
+                                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                                            isActive
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                                        )}
+                                    >
+                                        <item.icon className="h-4 w-4 shrink-0" />
+                                        {!collapsed && item.label}
+                                    </span>
+                                </Link>
+                            );
+                        })}
+                    </>
+                )}
+
+                {/* Admin section — đầy đủ, chỉ visible cho admin */}
                 {isAdmin && (
                     <>
                         {!collapsed && (
@@ -109,7 +146,7 @@ export function Sidebar() {
                             </div>
                         )}
                         {collapsed && <div className="border-t my-2" />}
-                        {adminItems.map((item) => {
+                        {[...editorItems, ...adminOnlyItems].map((item) => {
                             const isActive = pathname.startsWith(item.href);
                             return (
                                 <Link key={item.href} href={item.href}>

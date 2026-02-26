@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS contributions (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     author_id    UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
     author_email TEXT,
-    person_handle TEXT       NOT NULL,
+    person_handle TEXT,
     person_name  TEXT,
     field_name   TEXT        NOT NULL,
     field_label  TEXT,
