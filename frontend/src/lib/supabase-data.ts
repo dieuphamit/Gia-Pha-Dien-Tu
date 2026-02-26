@@ -28,8 +28,13 @@ export async function insertAuditLog(params: {
         entity_id: params.entityId ?? null,
         entity_name: params.entityName ?? null,
         metadata: params.metadata ?? null,
-    }).then();
+    }).then(({ error }) => {
+        if (error) {
+            console.error('[insertAuditLog] INSERT failed:', error.code, error.message, params);
+        }
+    });
 }
+
 
 // 笏笏 Convert snake_case DB rows to camelCase 笏笏
 

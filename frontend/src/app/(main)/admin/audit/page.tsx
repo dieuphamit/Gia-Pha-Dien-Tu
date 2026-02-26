@@ -61,6 +61,7 @@ export default function AuditLogPage() {
 
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [tableExists, setTableExists] = useState<boolean | null>(null);
     const [search, setSearch] = useState('');
     const [actionFilter, setActionFilter] = useState<ActionType>('all');
     const [entityFilter, setEntityFilter] = useState<string>('all');
@@ -70,22 +71,37 @@ export default function AuditLogPage() {
 
     const fetchLogs = useCallback(async (pageIndex = 0) => {
         setLoading(true);
-        let query = supabase
-            .from('audit_logs')
-            .select('*, actor:profiles(email, display_name)')
-            .order('created_at', { ascending: false })
-            .range(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE - 1);
 
-        if (actionFilter !== 'all') query = query.eq('action', actionFilter);
-        if (entityFilter !== 'all') query = query.eq('entity_type', entityFilter);
+        // Lấy session token để xác thực với API route
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+            setLoading(false);
+            return;
+        }
 
-        const { data } = await query;
-        if (data) {
-            if (pageIndex === 0) {
-                setLogs(data as AuditLog[]);
-            } else {
-                setLogs(prev => [...prev, ...(data as AuditLog[])]);
-            }
+        const params = new URLSearchParams({ page: String(pageIndex) });
+        if (actionFilter !== 'all') params.set('action', actionFilter);
+        if (entityFilter !== 'all') params.set('entity_type', entityFilter);
+
+        const res = await fetch(`/api/audit-logs?${params}`, {
+            headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+
+        if (!res.ok) {
+            const json = await res.json().catch(() => ({}));
+            if (res.status === 404) setTableExists(false);
+            console.error('[audit] fetch failed:', json.error);
+            setLoading(false);
+            return;
+        }
+
+        const json = await res.json();
+        setTableExists(true);
+        const data = json.data as AuditLog[];
+        if (pageIndex === 0) {
+            setLogs(data);
+        } else {
+            setLogs(prev => [...prev, ...data]);
         }
         setPage(pageIndex);
         setLoading(false);
@@ -136,6 +152,22 @@ export default function AuditLogPage() {
                     <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới
                 </Button>
             </div>
+
+            {/* Migration banner — chỉ hiện khi bảng chưa tồn tại */}
+            {tableExists === false && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+                    <p className="font-semibold text-amber-800 dark:text-amber-200">⚠️ Bảng <code>audit_logs</code> chưa tồn tại trong Supabase</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                        Vào <strong>Supabase Dashboard → SQL Editor</strong> và chạy nội dung file migration:
+                    </p>
+                    <code className="block text-xs bg-amber-100 dark:bg-amber-900/40 rounded px-3 py-2 font-mono">
+                        supabase/migrations/add_audit_logs.sql
+                    </code>
+                    <Button size="sm" variant="outline" className="border-amber-400" onClick={() => fetchLogs(0)}>
+                        <RefreshCw className="h-3 w-3 mr-1" /> Kiểm tra lại
+                    </Button>
+                </div>
+            )}
 
             {/* Filters */}
             <div className="flex flex-wrap gap-3 items-center">

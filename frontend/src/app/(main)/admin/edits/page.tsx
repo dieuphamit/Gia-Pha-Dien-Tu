@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth-provider';
 import { useRouter } from 'next/navigation';
+import { insertAuditLog } from '@/lib/supabase-data';
 
 interface Contribution {
     id: string;
@@ -66,10 +67,10 @@ function ContributionValuePreview({ contribution }: { contribution: Contribution
         // Humanize boolean values
         const humanValue = displayValue === 'true' ? 'Còn sống'
             : displayValue === 'false' ? 'Đã mất'
-            : displayValue || '(xóa trắng)';
+                : displayValue || '(xóa trắng)';
         const humanOld = contribution.old_value === 'true' ? 'Còn sống'
             : contribution.old_value === 'false' ? 'Đã mất'
-            : contribution.old_value || '(chưa có)';
+                : contribution.old_value || '(chưa có)';
         return (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
                 <p className="text-xs text-muted-foreground">Đề xuất thay đổi</p>
@@ -219,6 +220,8 @@ export default function AdminEditsPage() {
         setProcessingId(id);
         setApplyErrors(prev => { const n = { ...prev }; delete n[id]; return n; });
 
+        const contribution = contributions.find(c => c.id === id);
+
         const { error: updateError } = await supabase.from('contributions').update({
             status: action,
             admin_note: adminNotes[id] || null,
@@ -226,20 +229,40 @@ export default function AdminEditsPage() {
             reviewed_at: new Date().toISOString(),
         }).eq('id', id);
 
-        if (!updateError && action === 'approved') {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.access_token) {
-                const res = await fetch('/api/apply-contribution', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session.access_token}`,
+        if (!updateError) {
+            // REJECT: log từ client (API route không được gọi cho rejected)
+            if (action === 'rejected' && user?.id) {
+                insertAuditLog({
+                    actorId: user.id,
+                    action: 'REJECT',
+                    entityType: 'contribution',
+                    entityId: id,
+                    entityName: contribution?.person_name || contribution?.field_label || contribution?.field_name,
+                    metadata: {
+                        field_name: contribution?.field_name,
+                        person_handle: contribution?.person_handle,
+                        author_email: contribution?.author_email,
+                        admin_note: adminNotes[id] || null,
                     },
-                    body: JSON.stringify({ contributionId: id }),
                 });
-                const result = await res.json();
-                if (!result.ok && !result.skipped) {
-                    setApplyErrors(prev => ({ ...prev, [id]: result.error || 'Lỗi khi áp dụng đóng góp' }));
+            }
+
+            // APPROVE: gọi API apply — API route sẽ tự log APPROVE
+            if (action === 'approved') {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.access_token) {
+                    const res = await fetch('/api/apply-contribution', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session.access_token}`,
+                        },
+                        body: JSON.stringify({ contributionId: id }),
+                    });
+                    const result = await res.json();
+                    if (!result.ok && !result.skipped) {
+                        setApplyErrors(prev => ({ ...prev, [id]: result.error || 'Lỗi khi áp dụng đóng góp' }));
+                    }
                 }
             }
         }
