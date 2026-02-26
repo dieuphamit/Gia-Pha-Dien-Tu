@@ -22,8 +22,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
+import { supabase } from '@/lib/supabase';
 
 const navItems = [
     { href: '/', label: 'Trang chủ', icon: Home },
@@ -49,10 +50,67 @@ const adminOnlyItems = [
     { href: '/admin/backup', label: 'Backup', icon: Database },
 ];
 
+function PendingBadge({ count, collapsed }: { count: number; collapsed: boolean }) {
+    if (count === 0) return null;
+    if (collapsed) {
+        return <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />;
+    }
+    return (
+        <span className="ml-auto text-[10px] font-bold leading-none px-1.5 py-0.5 rounded-full bg-red-500 text-white min-w-[18px] text-center">
+            {count > 99 ? '99+' : count}
+        </span>
+    );
+}
+
 export function Sidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
     const { isAdmin, canEdit, isLoggedIn } = useAuth();
+    const [pendingCount, setPendingCount] = useState(0);
+
+    // Fetch số lượng đóng góp chờ duyệt (chỉ khi là editor hoặc admin)
+    useEffect(() => {
+        if (!canEdit) return;
+
+        const fetchPending = async () => {
+            const { count } = await supabase
+                .from('contributions')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'pending');
+            setPendingCount(count ?? 0);
+        };
+
+        fetchPending();
+
+        // Realtime subscription — badge tự cập nhật khi có đóng góp mới
+        const channel = supabase
+            .channel('sidebar-pending')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'contributions' }, fetchPending)
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [canEdit]);
+
+    const renderNavItem = (item: { href: string; label: string; icon: React.ElementType }, showBadge = false) => {
+        const isActive = pathname.startsWith(item.href);
+        const Icon = item.icon;
+        return (
+            <Link key={item.href} href={item.href}>
+                <span
+                    className={cn(
+                        'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                        isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                    )}
+                >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && item.label}
+                    {showBadge && <PendingBadge count={pendingCount} collapsed={collapsed} />}
+                </span>
+            </Link>
+        );
+    };
 
     return (
         <aside
@@ -103,7 +161,7 @@ export function Sidebar() {
                     </Link>
                 )}
 
-                {/* Editor section — Kiểm duyệt, chỉ hiển thị cho editor (không phải admin) */}
+                {/* Editor section — Kiểm duyệt + badge, chỉ hiển thị cho editor (không phải admin) */}
                 {canEdit && !isAdmin && (
                     <>
                         {!collapsed && (
@@ -114,24 +172,7 @@ export function Sidebar() {
                             </div>
                         )}
                         {collapsed && <div className="border-t my-2" />}
-                        {editorItems.map((item) => {
-                            const isActive = pathname.startsWith(item.href);
-                            return (
-                                <Link key={item.href} href={item.href}>
-                                    <span
-                                        className={cn(
-                                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                                            isActive
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                        )}
-                                    >
-                                        <item.icon className="h-4 w-4 shrink-0" />
-                                        {!collapsed && item.label}
-                                    </span>
-                                </Link>
-                            );
-                        })}
+                        {editorItems.map((item) => renderNavItem(item, item.href === '/admin/edits'))}
                     </>
                 )}
 
@@ -146,28 +187,12 @@ export function Sidebar() {
                             </div>
                         )}
                         {collapsed && <div className="border-t my-2" />}
-                        {[...editorItems, ...adminOnlyItems].map((item) => {
-                            const isActive = pathname.startsWith(item.href);
-                            return (
-                                <Link key={item.href} href={item.href}>
-                                    <span
-                                        className={cn(
-                                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                                            isActive
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                        )}
-                                    >
-                                        <item.icon className="h-4 w-4 shrink-0" />
-                                        {!collapsed && item.label}
-                                    </span>
-                                </Link>
-                            );
-                        })}
+                        {[...editorItems, ...adminOnlyItems].map((item) =>
+                            renderNavItem(item, item.href === '/admin/edits')
+                        )}
                     </>
                 )}
             </nav>
-
 
             {/* Collapse toggle */}
             <div className="border-t p-2">
