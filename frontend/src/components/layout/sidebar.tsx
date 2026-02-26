@@ -19,6 +19,8 @@ import {
     CalendarDays,
     HelpCircle,
     MessageSquarePlus,
+    Settings2,
+    Bug,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,7 @@ const navItems = [
     { href: '/book', label: 'Sách gia phả', icon: BookOpen },
     { href: '/people', label: 'Thành viên', icon: Users },
     { href: '/media', label: 'Thư viện', icon: Image },
+    { href: '/bug-reports', label: 'Báo cáo bug', icon: Bug },
 ];
 
 // Items dành cho editor + admin
@@ -48,6 +51,8 @@ const adminOnlyItems = [
     { href: '/admin/questions', label: 'Câu hỏi xác minh', icon: HelpCircle },
     { href: '/admin/audit', label: 'Audit Log', icon: FileText },
     { href: '/admin/backup', label: 'Backup', icon: Database },
+    { href: '/admin/settings', label: 'Cài đặt hệ thống', icon: Settings2 },
+    { href: '/admin/bugs', label: 'Quản lý Bug', icon: Bug },
 ];
 
 function PendingBadge({ count, collapsed }: { count: number; collapsed: boolean }) {
@@ -68,6 +73,40 @@ export function Sidebar() {
     const { isAdmin, canEdit, isLoggedIn } = useAuth();
     const [pendingCount, setPendingCount] = useState(0);
     const [pendingUsersCount, setPendingUsersCount] = useState(0);
+    const [openBugsCount, setOpenBugsCount] = useState(0);
+    // Feature toggles — đọc từ app_settings, cập nhật realtime
+    const [featureMedia, setFeatureMedia] = useState(true);
+
+    // Fetch feature flags từ app_settings
+    useEffect(() => {
+        if (!isLoggedIn) return;
+
+        supabase
+            .from('app_settings')
+            .select('key, value')
+            .then(({ data }) => {
+                if (!data) return;
+                const map: Record<string, string> = {};
+                data.forEach((r) => { map[r.key] = r.value; });
+                setFeatureMedia(map['feature_media_enabled'] !== 'false');
+            });
+
+        // Realtime: sidebar cập nhật ngay khi admin thay đổi setting
+        const ch = supabase
+            .channel('sidebar-feature-flags')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'app_settings' },
+                (payload) => {
+                    if (payload.new.key === 'feature_media_enabled') {
+                        setFeatureMedia(payload.new.value !== 'false');
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(ch); };
+    }, [isLoggedIn]);
 
     // Fetch số lượng đóng góp chờ duyệt (chỉ khi là editor hoặc admin)
     useEffect(() => {
@@ -127,6 +166,28 @@ export function Sidebar() {
         };
     }, [isAdmin]);
 
+    // Fetch số bug open (chỉ khi là admin)
+    useEffect(() => {
+        if (!isAdmin) return;
+
+        const fetchOpenBugs = async () => {
+            const { count } = await supabase
+                .from('bug_reports')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'open');
+            setOpenBugsCount(count ?? 0);
+        };
+
+        fetchOpenBugs();
+
+        const channel = supabase
+            .channel('sidebar-open-bugs')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'bug_reports' }, fetchOpenBugs)
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [isAdmin]);
+
     const renderNavItem = (item: { href: string; label: string; icon: React.ElementType }, badgeCount = 0) => {
         const isActive = pathname.startsWith(item.href);
         const Icon = item.icon;
@@ -163,24 +224,26 @@ export function Sidebar() {
 
             {/* Navigation */}
             <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-                {navItems.map((item) => {
-                    const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-                    return (
-                        <Link key={item.href} href={item.href}>
-                            <span
-                                className={cn(
-                                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                                    isActive
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                )}
-                            >
-                                <item.icon className="h-4 w-4 shrink-0" />
-                                {!collapsed && item.label}
-                            </span>
-                        </Link>
-                    );
-                })}
+                {navItems
+                    .filter(item => item.href !== '/media' || featureMedia)
+                    .map((item) => {
+                        const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                        return (
+                            <Link key={item.href} href={item.href}>
+                                <span
+                                    className={cn(
+                                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                                        isActive
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                                    )}
+                                >
+                                    <item.icon className="h-4 w-4 shrink-0" />
+                                    {!collapsed && item.label}
+                                </span>
+                            </Link>
+                        );
+                    })}
 
                 {/* Contributions — only for members (not editor/admin) */}
                 {isLoggedIn && !canEdit && (
@@ -227,7 +290,8 @@ export function Sidebar() {
                             renderNavItem(
                                 item,
                                 item.href === '/admin/edits' ? pendingCount :
-                                    item.href === '/admin/users' ? pendingUsersCount : 0
+                                    item.href === '/admin/users' ? pendingUsersCount :
+                                        item.href === '/admin/bugs' ? openBugsCount : 0
                             )
                         )}
                     </>
