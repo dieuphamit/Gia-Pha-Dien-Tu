@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth-provider';
 import { AddMemberDialog } from '@/components/add-member-dialog';
+import { ContributeNewPersonDialog } from '@/components/contribute-new-person-dialog';
 import {
     Table,
     TableBody,
@@ -81,7 +82,7 @@ function SortableHead({
 
 export default function PeopleListPage() {
     const router = useRouter();
-    const { canEdit } = useAuth();
+    const { canEdit, isMember } = useAuth();
 
     const [people, setPeople] = useState<Person[]>([]);
     const [loading, setLoading] = useState(true);
@@ -204,12 +205,15 @@ export default function PeopleListPage() {
                     </h1>
                     <p className="text-muted-foreground">{people.length} người trong gia phả</p>
                 </div>
-                {canEdit && (
-                    <Button id="open-add-member-btn" onClick={() => setAddDialogOpen(true)}>
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Thêm thành viên
-                    </Button>
-                )}
+                <div className="flex gap-2">
+                    {canEdit && (
+                        <Button id="open-add-member-btn" onClick={() => setAddDialogOpen(true)}>
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Thêm thành viên
+                        </Button>
+                    )}
+                    {isMember && <ContributeNewPersonDialog />}
+                </div>
             </div>
 
             <AddMemberDialog

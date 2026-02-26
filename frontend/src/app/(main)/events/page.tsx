@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { ContributeEventDialog } from '@/components/contribute-event-dialog';
 
 interface EventItem {
     id: string;
@@ -187,7 +188,7 @@ function EventCard({ event }: { event: EventItem }) {
 // === Main Page ===
 
 export default function EventsPage() {
-    const { canEdit } = useAuth();
+    const { canEdit, isMember } = useAuth();
     const [events, setEvents] = useState<EventItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -265,7 +266,10 @@ export default function EventsPage() {
                     </h1>
                     <p className="text-muted-foreground">Lịch các hoạt động dòng họ</p>
                 </div>
-                {canEdit && <CreateEventDialog onCreated={fetchEvents} />}
+                <div className="flex gap-2">
+                    {canEdit && <CreateEventDialog onCreated={fetchEvents} />}
+                    {isMember && <ContributeEventDialog />}
+                </div>
             </div>
 
             {fetchError && (

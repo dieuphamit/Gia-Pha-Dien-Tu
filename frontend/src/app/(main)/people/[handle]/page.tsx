@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { zodiacYear } from '@/lib/genealogy-types';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
+import { ContributeEditPersonDialog } from '@/components/contribute-edit-person-dialog';
 import { useAuth } from '@/components/auth-provider';
 import {
     updatePerson,
@@ -54,7 +55,7 @@ export default function PersonProfilePage() {
     const params = useParams();
     const router = useRouter();
     const handle = params.handle as string;
-    const { isAdmin } = useAuth();
+    const { isAdmin, isMember } = useAuth();
     const [person, setPerson] = useState<PersonDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
@@ -317,13 +318,18 @@ export default function PersonProfilePage() {
                     </div>
                 </div>
 
-                {/* Admin edit button */}
-                {isAdmin && !editing && (
-                    <Button variant="outline" size="sm" onClick={startEdit}>
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Sửa thông tin
-                    </Button>
-                )}
+                {/* Edit / propose buttons */}
+                <div className="flex items-center gap-2">
+                    {isAdmin && !editing && (
+                        <Button variant="outline" size="sm" onClick={startEdit}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Sửa thông tin
+                        </Button>
+                    )}
+                    {isMember && !person.isPrivacyFiltered && (
+                        <ContributeEditPersonDialog person={person} />
+                    )}
+                </div>
                 {isAdmin && editing && (
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => { setEditing(false); setSaveError(''); }} disabled={saving}>

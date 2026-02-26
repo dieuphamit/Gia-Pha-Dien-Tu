@@ -547,3 +547,68 @@ export async function fetchPeopleForSelect(): Promise<Array<{
         gender: r.gender,
     }));
 }
+
+// ── Contribution helpers ──────────────────────────────────────
+
+export type ContributionType =
+    | 'edit_person_field'
+    | 'add_person'
+    | 'delete_person'
+    | 'add_event'
+    | 'add_post'
+    | 'add_quiz_question';
+
+export interface Contribution {
+    id: string;
+    author_id: string;
+    author_email: string;
+    person_handle: string | null;
+    person_name: string | null;
+    field_name: string;
+    field_label: string | null;
+    old_value: string | null;
+    new_value: string;
+    note: string | null;
+    status: 'pending' | 'approved' | 'rejected';
+    admin_note: string | null;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    created_at: string;
+}
+
+export interface SubmitContributionParams {
+    authorId: string;
+    authorEmail: string;
+    fieldName: ContributionType;
+    fieldLabel: string;
+    newValue: string;
+    personHandle?: string;
+    personName?: string;
+    oldValue?: string;
+    note?: string;
+}
+
+export async function submitContribution(params: SubmitContributionParams): Promise<{ error: string | null }> {
+    const { error } = await supabase.from('contributions').insert({
+        author_id: params.authorId,
+        author_email: params.authorEmail,
+        person_handle: params.personHandle || null,
+        person_name: params.personName || null,
+        field_name: params.fieldName,
+        field_label: params.fieldLabel,
+        old_value: params.oldValue || null,
+        new_value: params.newValue,
+        note: params.note || null,
+        status: 'pending',
+    });
+    return { error: error ? error.message : null };
+}
+
+export async function fetchMyContributions(userId: string): Promise<Contribution[]> {
+    const { data } = await supabase
+        .from('contributions')
+        .select('*')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false });
+    return (data as Contribution[]) || [];
+}

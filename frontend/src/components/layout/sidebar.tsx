@@ -18,6 +18,7 @@ import {
     Newspaper,
     CalendarDays,
     HelpCircle,
+    MessageSquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,7 @@ const adminItems = [
 export function Sidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
-    const { isAdmin } = useAuth();
+    const { isAdmin, canEdit, isLoggedIn } = useAuth();
 
     return (
         <aside
@@ -81,6 +82,21 @@ export function Sidebar() {
                         </Link>
                     );
                 })}
+
+                {/* Contributions — only for members (not editor/admin) */}
+                {isLoggedIn && !canEdit && (
+                    <Link href="/contributions">
+                        <span className={cn(
+                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                            pathname.startsWith('/contributions')
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                        )}>
+                            <MessageSquarePlus className="h-4 w-4 shrink-0" />
+                            {!collapsed && 'Đóng góp của tôi'}
+                        </span>
+                    </Link>
+                )}
 
                 {/* Admin section — only visible for admin users */}
                 {isAdmin && (

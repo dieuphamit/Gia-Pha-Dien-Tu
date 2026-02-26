@@ -154,12 +154,14 @@ CREATE TABLE IF NOT EXISTS contributions (
     admin_note   TEXT,
     reviewed_by  UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
     reviewed_at  TIMESTAMPTZ,
+    applied_at   TIMESTAMPTZ,                                    -- null = chưa apply vào DB
     created_at   TIMESTAMPTZ DEFAULT now(),
     CONSTRAINT contributions_value_length CHECK (char_length(new_value) <= 5000)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contributions_status ON contributions (status);
-CREATE INDEX IF NOT EXISTS idx_contributions_person ON contributions (person_handle);
+CREATE INDEX IF NOT EXISTS idx_contributions_status  ON contributions (status);
+CREATE INDEX IF NOT EXISTS idx_contributions_person  ON contributions (person_handle);
+CREATE INDEX IF NOT EXISTS idx_contributions_applied ON contributions (applied_at) WHERE applied_at IS NULL;
 
 
 -- ╔══════════════════════════════════════════════════════════╗

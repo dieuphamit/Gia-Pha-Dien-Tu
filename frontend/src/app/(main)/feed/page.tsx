@@ -12,6 +12,7 @@ import {
     User,
     Calendar,
     AlertCircle,
+    MessageSquarePlus,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { submitContribution } from '@/lib/supabase-data';
 
 // === Types ===
 
@@ -113,6 +115,88 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
                         <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || submitting}>
                             <PenSquare className="mr-2 h-4 w-4" />
                             {submitting ? 'Đang đăng...' : 'Đăng bài'}
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// === Contribute Post Composer (for members) ===
+
+function ContributePostComposer() {
+    const { user, profile, isMember } = useAuth();
+    const [body, setBody] = useState('');
+    const [title, setTitle] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [expanded, setExpanded] = useState(false);
+    const [sent, setSent] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async () => {
+        if (!body.trim() || !user) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+            const payload = { title: title.trim() || undefined, body: body.trim() };
+            const { error: submitError } = await submitContribution({
+                authorId: user.id,
+                authorEmail: profile?.email || user.email || '',
+                fieldName: 'add_post',
+                fieldLabel: 'Đề xuất bài viết',
+                newValue: JSON.stringify(payload),
+                personName: title.trim() || body.trim().slice(0, 50),
+            });
+            if (submitError) { setError(submitError); } else {
+                setBody(''); setTitle(''); setExpanded(false); setSent(true);
+                setTimeout(() => setSent(false), 4000);
+            }
+        } finally { setSubmitting(false); }
+    };
+
+    if (!isMember) return null;
+
+    return (
+        <Card>
+            <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <MessageSquarePlus className="h-4 w-4 text-blue-500" />
+                    <span>Đề xuất bài viết cho bảng tin (cần duyệt)</span>
+                </div>
+                {sent && (
+                    <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3 text-xs text-green-700 dark:text-green-400">
+                        ✅ Đã gửi đề xuất! Biên tập viên sẽ xem xét.
+                    </div>
+                )}
+                {expanded && (
+                    <Input
+                        placeholder="Tiêu đề (tùy chọn)"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                    />
+                )}
+                <Textarea
+                    placeholder="Chia sẻ điều gì đó... (sẽ được xem xét trước khi đăng)"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    onFocus={() => setExpanded(true)}
+                    rows={expanded ? 4 : 2}
+                />
+                {error && (
+                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {error}
+                    </div>
+                )}
+                {expanded && (
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => { setExpanded(false); setError(null); }}>
+                            Hủy
+                        </Button>
+                        <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || submitting}>
+                            <Send className="mr-2 h-4 w-4" />
+                            {submitting ? 'Đang gửi...' : 'Gửi đề xuất'}
                         </Button>
                     </div>
                 )}
@@ -350,6 +434,7 @@ export default function FeedPage() {
             </div>
 
             <PostComposer onPostCreated={fetchPosts} />
+            <ContributePostComposer />
 
             {fetchError && (
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-4 py-3">
