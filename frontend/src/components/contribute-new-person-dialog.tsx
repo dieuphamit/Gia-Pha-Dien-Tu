@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { UserPlus, Send, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/auth-provider';
-import { submitContribution } from '@/lib/supabase-data';
+import { submitContribution, fetchPeopleForSelect } from '@/lib/supabase-data';
 
 interface NewPersonPayload {
     displayName: string;
@@ -26,6 +26,8 @@ interface NewPersonPayload {
     phone?: string;
     email?: string;
     relationHint?: string;
+    parentHandle?: string;
+    childrenHandles?: string[];
 }
 
 export function ContributeNewPersonDialog() {
@@ -46,17 +48,28 @@ export function ContributeNewPersonDialog() {
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [relationHint, setRelationHint] = useState('');
+    const [peopleOptions, setPeopleOptions] = useState<Array<{ handle: string; displayName: string; generation: number; gender: number; }>>([]);
+    const [parentHandle, setParentHandle] = useState('');
+    const [childrenHandles, setChildrenHandles] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (open) {
+            fetchPeopleForSelect().then(setPeopleOptions);
+        }
+    }, [open]);
 
     const reset = () => {
         setDisplayName(''); setGender(1); setGeneration('');
         setBirthYear(''); setDeathYear(''); setIsLiving(true);
         setOccupation(''); setAddress(''); setPhone('');
         setEmail(''); setRelationHint(''); setError(''); setSent(false);
+        setParentHandle(''); setChildrenHandles([]);
     };
 
     const handleSubmit = async () => {
         if (!displayName.trim()) { setError('Vui lòng nhập họ tên'); return; }
         if (!generation) { setError('Vui lòng nhập đời thứ'); return; }
+        if (!parentHandle) { setError('Vui lòng chọn mối quan hệ cha mẹ'); return; }
         if (!user) { setError('Bạn cần đăng nhập'); return; }
 
         setSubmitting(true);
@@ -74,7 +87,14 @@ export function ContributeNewPersonDialog() {
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
             relationHint: relationHint.trim() || undefined,
+            parentHandle,
+            childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
         };
+
+        const parentName = peopleOptions.find(p => p.handle === parentHandle)?.displayName || '';
+        const childrenNames = childrenHandles.map(h => peopleOptions.find(p => p.handle === h)?.displayName).filter(Boolean).join(', ');
+        const autoRelationHint = `Cha/mẹ: ${parentName} (${parentHandle})` + (childrenNames ? `\nCon cái: ${childrenNames}` : '');
+        const finalNote = relationHint.trim() ? `${autoRelationHint}\nChú thích thêm: ${relationHint.trim()}` : autoRelationHint;
 
         const { error: submitError } = await submitContribution({
             authorId: user.id,
@@ -83,7 +103,7 @@ export function ContributeNewPersonDialog() {
             fieldLabel: 'Thêm thành viên mới',
             newValue: JSON.stringify(payload),
             personName: displayName.trim(),
-            note: relationHint.trim() || undefined,
+            note: finalNote,
         });
 
         setSubmitting(false);
@@ -210,11 +230,46 @@ export function ContributeNewPersonDialog() {
                         </div>
 
                         <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Mối quan hệ cha mẹ (Bắt buộc) *</label>
+                            <select
+                                value={parentHandle}
+                                onChange={e => setParentHandle(e.target.value)}
+                                className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                            >
+                                <option value="">-- Chọn cha/mẹ --</option>
+                                {peopleOptions.map(p => (
+                                    <option key={p.handle} value={p.handle}>
+                                        {p.displayName} (Đời {p.generation}) - {p.handle}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Con cái (Tùy chọn - Nhấn Ctrl/Cmd để chọn nhiều)</label>
+                            <select
+                                multiple
+                                value={childrenHandles}
+                                onChange={e => {
+                                    const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                    setChildrenHandles(selected);
+                                }}
+                                className="w-full rounded-md border px-3 py-2 text-sm bg-background h-24"
+                            >
+                                {peopleOptions.map(p => (
+                                    <option key={p.handle} value={p.handle}>
+                                        {p.displayName} (Đời {p.generation}) - {p.handle}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-1.5">
                             <label className="text-xs font-medium text-muted-foreground">
-                                Quan hệ trong gia phả (gợi ý cho reviewer)
+                                Quan hệ trong gia phả (chú thích thêm cho reviewer)
                             </label>
                             <Input
-                                placeholder="VD: Con trai của Phạm Văn B, đời 4"
+                                placeholder="VD: Là con thứ 2, đã chuyển vào Nam năm 2000"
                                 value={relationHint}
                                 onChange={e => setRelationHint(e.target.value)}
                             />
@@ -231,7 +286,7 @@ export function ContributeNewPersonDialog() {
                             <Button
                                 className="flex-1"
                                 onClick={handleSubmit}
-                                disabled={submitting || !displayName.trim() || !generation}
+                                disabled={submitting || !displayName.trim() || !generation || !parentHandle}
                             >
                                 {submitting ? 'Đang gửi...' : <><Send className="w-4 h-4 mr-2" />Gửi đề xuất</>}
                             </Button>

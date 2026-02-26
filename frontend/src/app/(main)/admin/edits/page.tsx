@@ -269,6 +269,7 @@ export default function AdminEditsPage() {
 
         setProcessingId(null);
         fetchContributions();
+        window.dispatchEvent(new Event('refresh-badges'));
     };
 
     const statusColors = {

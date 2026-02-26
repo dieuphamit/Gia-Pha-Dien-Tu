@@ -33,14 +33,14 @@ export async function GET(request: NextRequest) {
         // nên không thể dùng embedded select trực tiếp — cần query 2 bước
         let query = serviceClient
             .from('audit_logs')
-            .select('*')
+            .select('*', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
         if (action) query = query.eq('action', action);
         if (entityType) query = query.eq('entity_type', entityType);
 
-        const { data: logs, error } = await query;
+        const { data: logs, count, error } = await query;
         if (error) {
             console.error('[audit-logs] Supabase error:', error);
             return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
             actor: l.actor_id ? (profileMap[l.actor_id as string] ?? null) : null,
         }));
 
-        return NextResponse.json({ ok: true, data });
+        return NextResponse.json({ ok: true, data, total: count || 0 });
     } catch (err) {
         console.error('[audit-logs] Exception:', err);
         return NextResponse.json(

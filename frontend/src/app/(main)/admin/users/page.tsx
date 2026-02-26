@@ -169,6 +169,7 @@ export default function AdminUsersPage() {
         if (!error) {
             const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+            window.dispatchEvent(new Event('refresh-badges'));
             if (currentUser) {
                 insertAuditLog({
                     actorId: currentUser.id,
@@ -187,6 +188,7 @@ export default function AdminUsersPage() {
         if (!error) {
             const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
+            window.dispatchEvent(new Event('refresh-badges'));
             if (currentUser) {
                 insertAuditLog({
                     actorId: currentUser.id,
@@ -378,8 +380,8 @@ export default function AdminUsersPage() {
                                     key={tab.key}
                                     onClick={() => setStatusFilter(tab.key)}
                                     className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === tab.key
-                                            ? 'bg-background shadow-sm text-foreground'
-                                            : 'text-muted-foreground hover:text-foreground'
+                                        ? 'bg-background shadow-sm text-foreground'
+                                        : 'text-muted-foreground hover:text-foreground'
                                         } ${tab.key === 'pending' && pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
                                 >
                                     {tab.label}

@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 6. Write audit log
-        if (callerId && !result.skipped) {
+        if (callerId && role === 'editor' && !result.skipped) {
             await serviceClient.from('audit_logs').insert({
                 actor_id: callerId,
                 action: result.ok ? 'APPROVE' : 'REJECT',

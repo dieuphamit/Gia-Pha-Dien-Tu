@@ -21,18 +21,33 @@ export async function insertAuditLog(params: {
     entityName?: string;
     metadata?: Record<string, unknown>;
 }): Promise<void> {
-    supabase.from('audit_logs').insert({
-        actor_id: params.actorId,
-        action: params.action,
-        entity_type: params.entityType,
-        entity_id: params.entityId ?? null,
-        entity_name: params.entityName ?? null,
-        metadata: params.metadata ?? null,
-    }).then(({ error }) => {
+    try {
+        // Chỉ ghi log cho role 'editor'
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', params.actorId)
+            .maybeSingle();
+
+        if (profile?.role !== 'editor') {
+            return; // Bỏ qua nếu không phải editor
+        }
+
+        const { error } = await supabase.from('audit_logs').insert({
+            actor_id: params.actorId,
+            action: params.action,
+            entity_type: params.entityType,
+            entity_id: params.entityId ?? null,
+            entity_name: params.entityName ?? null,
+            metadata: params.metadata ?? null,
+        });
+
         if (error) {
             console.error('[insertAuditLog] INSERT failed:', error.code, error.message, params);
         }
-    });
+    } catch (err) {
+        console.error('[insertAuditLog] Error checking role or inserting log:', err);
+    }
 }
 
 

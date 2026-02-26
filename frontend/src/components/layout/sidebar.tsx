@@ -67,6 +67,7 @@ export function Sidebar() {
     const [collapsed, setCollapsed] = useState(false);
     const { isAdmin, canEdit, isLoggedIn } = useAuth();
     const [pendingCount, setPendingCount] = useState(0);
+    const [pendingUsersCount, setPendingUsersCount] = useState(0);
 
     // Fetch số lượng đóng góp chờ duyệt (chỉ khi là editor hoặc admin)
     useEffect(() => {
@@ -82,16 +83,51 @@ export function Sidebar() {
 
         fetchPending();
 
+        const handleRefresh = () => fetchPending();
+        window.addEventListener('refresh-badges', handleRefresh);
+
         // Realtime subscription — badge tự cập nhật khi có đóng góp mới
         const channel = supabase
             .channel('sidebar-pending')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'contributions' }, fetchPending)
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
+        return () => {
+            window.removeEventListener('refresh-badges', handleRefresh);
+            supabase.removeChannel(channel);
+        };
     }, [canEdit]);
 
-    const renderNavItem = (item: { href: string; label: string; icon: React.ElementType }, showBadge = false) => {
+    // Fetch số lượng user chờ duyệt (chỉ khi là admin)
+    useEffect(() => {
+        if (!isAdmin) return;
+
+        const fetchPendingUsers = async () => {
+            const { count } = await supabase
+                .from('profiles')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'pending');
+            setPendingUsersCount(count ?? 0);
+        };
+
+        fetchPendingUsers();
+
+        const handleRefresh = () => fetchPendingUsers();
+        window.addEventListener('refresh-badges', handleRefresh);
+
+        // Realtime subscription — badge tự cập nhật khi có profile mới/sửa
+        const channel = supabase
+            .channel('sidebar-pending-users')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchPendingUsers)
+            .subscribe();
+
+        return () => {
+            window.removeEventListener('refresh-badges', handleRefresh);
+            supabase.removeChannel(channel);
+        };
+    }, [isAdmin]);
+
+    const renderNavItem = (item: { href: string; label: string; icon: React.ElementType }, badgeCount = 0) => {
         const isActive = pathname.startsWith(item.href);
         const Icon = item.icon;
         return (
@@ -106,7 +142,7 @@ export function Sidebar() {
                 >
                     <Icon className="h-4 w-4 shrink-0" />
                     {!collapsed && item.label}
-                    {showBadge && <PendingBadge count={pendingCount} collapsed={collapsed} />}
+                    {badgeCount > 0 && <PendingBadge count={badgeCount} collapsed={collapsed} />}
                 </span>
             </Link>
         );
@@ -172,7 +208,7 @@ export function Sidebar() {
                             </div>
                         )}
                         {collapsed && <div className="border-t my-2" />}
-                        {editorItems.map((item) => renderNavItem(item, item.href === '/admin/edits'))}
+                        {editorItems.map((item) => renderNavItem(item, item.href === '/admin/edits' ? pendingCount : 0))}
                     </>
                 )}
 
@@ -188,7 +224,11 @@ export function Sidebar() {
                         )}
                         {collapsed && <div className="border-t my-2" />}
                         {[...editorItems, ...adminOnlyItems].map((item) =>
-                            renderNavItem(item, item.href === '/admin/edits')
+                            renderNavItem(
+                                item,
+                                item.href === '/admin/edits' ? pendingCount :
+                                    item.href === '/admin/users' ? pendingUsersCount : 0
+                            )
                         )}
                     </>
                 )}

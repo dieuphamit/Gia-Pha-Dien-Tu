@@ -67,6 +67,7 @@ export default function AuditLogPage() {
     const [entityFilter, setEntityFilter] = useState<string>('all');
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [page, setPage] = useState(0);
+    const [totalLogs, setTotalLogs] = useState(0);
     const PAGE_SIZE = 100;
 
     const fetchLogs = useCallback(async (pageIndex = 0) => {
@@ -98,11 +99,8 @@ export default function AuditLogPage() {
         const json = await res.json();
         setTableExists(true);
         const data = json.data as AuditLog[];
-        if (pageIndex === 0) {
-            setLogs(data);
-        } else {
-            setLogs(prev => [...prev, ...data]);
-        }
+        setLogs(data);
+        setTotalLogs(json.total || 0);
         setPage(pageIndex);
         setLoading(false);
     }, [actionFilter, entityFilter]);
@@ -225,7 +223,7 @@ export default function AuditLogPage() {
 
             {/* Stats row */}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Hiển thị <strong>{filtered.length}</strong> / {logs.length} log</span>
+                <span>Hiển thị trang <strong>{page + 1}</strong> (<strong>{filtered.length}</strong> log khớp tìm kiếm trên tổng số {totalLogs} log)</span>
             </div>
 
             {/* Table */}
@@ -329,12 +327,30 @@ export default function AuditLogPage() {
                 </CardContent>
             </Card>
 
-            {/* Load more */}
-            {filtered.length >= PAGE_SIZE && (
-                <div className="flex justify-center">
-                    <Button variant="outline" onClick={() => fetchLogs(page + 1)} disabled={loading}>
-                        {loading ? 'Đang tải...' : 'Tải thêm'}
-                    </Button>
+            {/* Pagination Controls */}
+            {totalLogs > PAGE_SIZE && (
+                <div className="flex items-center justify-between border-t pt-4">
+                    <div className="text-xs text-muted-foreground">
+                        Trang {page + 1} / {Math.ceil(totalLogs / PAGE_SIZE)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setPage(page - 1); fetchLogs(page - 1); }}
+                            disabled={loading || page === 0}
+                        >
+                            Trang trước
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setPage(page + 1); fetchLogs(page + 1); }}
+                            disabled={loading || (page + 1) * PAGE_SIZE >= totalLogs}
+                        >
+                            Trang sau
+                        </Button>
+                    </div>
                 </div>
             )}
         </div>
