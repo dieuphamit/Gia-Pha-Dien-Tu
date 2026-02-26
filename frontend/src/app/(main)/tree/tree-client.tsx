@@ -190,7 +190,7 @@ export default function TreeViewPage() {
     // Editor mode state
     const [editorMode, setEditorMode] = useState(false);
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
-    const { isAdmin } = useAuth();
+    const { isAdmin, canEdit } = useAuth();
 
     // URL query param initialization + auto-collapse on initial load
     const urlInitialized = useRef(false);
@@ -841,7 +841,7 @@ export default function TreeViewPage() {
                         })}><ZoomOut className="h-3.5 w-3.5" /></Button>
                         <Button variant="outline" size="icon" className="h-8 w-8" onClick={fitAll}><Maximize2 className="h-3.5 w-3.5" /></Button>
                         <div className="w-px bg-border mx-0.5" />
-                        {isAdmin && (
+                        {canEdit && (
                             <Button
                                 variant={editorMode ? 'default' : 'outline'}
                                 size="icon"

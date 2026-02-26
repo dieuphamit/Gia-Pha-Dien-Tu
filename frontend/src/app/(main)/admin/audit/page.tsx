@@ -68,7 +68,7 @@ export default function AuditLogPage() {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [page, setPage] = useState(0);
     const [totalLogs, setTotalLogs] = useState(0);
-    const PAGE_SIZE = 100;
+    const PAGE_SIZE = 20;
 
     const fetchLogs = useCallback(async (pageIndex = 0) => {
         setLoading(true);
@@ -328,7 +328,7 @@ export default function AuditLogPage() {
             </Card>
 
             {/* Pagination Controls */}
-            {totalLogs > PAGE_SIZE && (
+            {totalLogs > 0 && (
                 <div className="flex items-center justify-between border-t pt-4">
                     <div className="text-xs text-muted-foreground">
                         Trang {page + 1} / {Math.ceil(totalLogs / PAGE_SIZE)}

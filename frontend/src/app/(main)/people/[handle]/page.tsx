@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Heart, Image, FileText, History, Lock, Phone, MapPin, Briefcase, GraduationCap, Tag, MessageCircle, Pencil, Save, X } from 'lucide-react';
+import { ArrowLeft, User, Heart, Image, FileText, History, Lock, Phone, MapPin, Briefcase, GraduationCap, Tag, MessageCircle, Pencil, Save, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -55,7 +55,7 @@ export default function PersonProfilePage() {
     const params = useParams();
     const router = useRouter();
     const handle = params.handle as string;
-    const { isAdmin, isMember } = useAuth();
+    const { isAdmin, canEdit, isMember, user } = useAuth();
     const [person, setPerson] = useState<PersonDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
@@ -260,6 +260,23 @@ export default function PersonProfilePage() {
         setEditing(false);
     };
 
+    const handleDelete = async () => {
+        if (!person) return;
+        const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa thành viên ${person.displayName} (${person.handle})?\nHành động này không thể hoàn tác.`);
+        if (!confirmDelete) return;
+
+        setSaving(true);
+        const { deletePerson } = await import('@/lib/supabase-data');
+        const { error } = await deletePerson(handle, user?.id, person.displayName);
+        if (error) {
+            setSaveError(error);
+            setSaving(false);
+            return;
+        }
+
+        router.push('/');
+    };
+
     const set = (field: keyof EditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setForm(prev => ({ ...prev, [field]: e.target.value }));
     };
@@ -415,17 +432,25 @@ export default function PersonProfilePage() {
 
                 {/* Edit / propose buttons */}
                 <div className="flex items-center gap-2">
-                    {isAdmin && !editing && (
-                        <Button variant="outline" size="sm" onClick={startEdit}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Sửa thông tin
-                        </Button>
+                    {canEdit && !editing && (
+                        <>
+                            <Button variant="outline" size="sm" onClick={startEdit}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Sửa thông tin
+                            </Button>
+                            {isAdmin && (
+                                <Button variant="destructive" size="sm" onClick={handleDelete} disabled={saving}>
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Xóa
+                                </Button>
+                            )}
+                        </>
                     )}
                     {isMember && !person.isPrivacyFiltered && (
                         <ContributeEditPersonDialog person={person} />
                     )}
                 </div>
-                {isAdmin && editing && (
+                {canEdit && editing && (
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => { setEditing(false); setSaveError(''); }} disabled={saving}>
                             <X className="h-4 w-4 mr-2" />
@@ -446,7 +471,7 @@ export default function PersonProfilePage() {
                 </div>
             )}
 
-            {/* ── EDIT FORM (Admin only) ── */}
+            {/* ── EDIT FORM (Admin & Editor only) ── */}
             {editing && (
                 <div className="space-y-4">
                     {/* Thông tin cá nhân */}

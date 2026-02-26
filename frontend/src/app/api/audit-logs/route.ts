@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         const action = searchParams.get('action');
         const entityType = searchParams.get('entity_type');
         const page = parseInt(searchParams.get('page') || '0', 10);
-        const pageSize = 100;
+        const pageSize = 20;
 
         const serviceClient = createServiceClient();
         // audit_logs.actor_id → auth.users(id), không phải profiles(id)

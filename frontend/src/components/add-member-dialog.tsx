@@ -267,6 +267,7 @@ function StepRelation({
     personGeneration,
     families,
     people,
+    onCreatePerson,
     onDone,
     onBack,
 }: {
@@ -275,11 +276,13 @@ function StepRelation({
     personGeneration: number;
     families: FamilyOption[];
     people: PersonOption[];
+    onCreatePerson: () => Promise<{ handle?: string, error?: string }>;
     onDone: (message: string) => void;
     onBack: () => void;
 }) {
     const [mode, setMode] = useState<RelationMode>(null);
     const [selectedFamily, setSelectedFamily] = useState('');
+    const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
     const [spouseRole, setSpouseRole] = useState<'father' | 'mother'>('father');
     const [newFatherHandle, setNewFatherHandle] = useState('');
     const [newMotherHandle, setNewMotherHandle] = useState('');
@@ -292,15 +295,61 @@ function StepRelation({
         try {
             if (mode === 'child') {
                 if (!selectedFamily) { setError('Vui lòng chọn gia đình'); setLoading(false); return; }
-                const r = await addPersonAsChild(personHandle, selectedFamily);
+            } else if (mode === 'spouse') {
+                if (selectedChildren.length === 0) { setError('Vui lòng chọn ít nhất 1 người con'); setLoading(false); return; }
+            }
+
+            // Tạo người trong DB FIRST
+            const createRes = await onCreatePerson();
+            if (createRes.error || !createRes.handle) {
+                setError(createRes.error || 'Lỗi khi tạo thành viên');
+                setLoading(false);
+                return;
+            }
+            const finalPersonHandle = createRes.handle;
+
+            if (mode === 'child') {
+                const r = await addPersonAsChild(finalPersonHandle, selectedFamily);
                 if (r.error) { setError(r.error); setLoading(false); return; }
                 onDone(`✅ Đã thêm ${personName} làm con trong gia đình ${selectedFamily}`);
 
             } else if (mode === 'spouse') {
-                if (!selectedFamily) { setError('Vui lòng chọn gia đình'); setLoading(false); return; }
-                const r = await addPersonAsSpouse(personHandle, selectedFamily, spouseRole);
-                if (r.error) { setError(r.error); setLoading(false); return; }
-                onDone(`✅ Đã thêm ${personName} làm ${spouseRole === 'father' ? 'cha' : 'mẹ'} trong gia đình ${selectedFamily}`);
+                const { fetchFamilies } = await import('@/lib/supabase-data');
+                const allFams = await fetchFamilies();
+
+                // Find a family that contains the first selected child and is missing this role
+                // Or just the first family of the first child.
+                const existingFam = allFams.find(f => f.children.includes(selectedChildren[0]) && !f[spouseRole === 'father' ? 'fatherHandle' : 'motherHandle']);
+
+                let targetFamilyHandle = existingFam?.handle;
+
+                if (!targetFamilyHandle) {
+                    // Create a new family
+                    targetFamilyHandle = await generateFamilyHandle();
+                    const r = await addFamily({
+                        handle: targetFamilyHandle,
+                        fatherHandle: spouseRole === 'father' ? finalPersonHandle : undefined,
+                        motherHandle: spouseRole === 'mother' ? finalPersonHandle : undefined,
+                    });
+                    if (r.error) { setError(r.error); setLoading(false); return; }
+
+                    for (const childHandle of selectedChildren) {
+                        await addPersonAsChild(childHandle, targetFamilyHandle);
+                    }
+                    const s = await addPersonAsSpouse(finalPersonHandle, targetFamilyHandle, spouseRole);
+                    if (s.error) { setError(s.error); setLoading(false); return; }
+                } else {
+                    const r = await addPersonAsSpouse(finalPersonHandle, targetFamilyHandle, spouseRole);
+                    if (r.error) { setError(r.error); setLoading(false); return; }
+
+                    for (const childHandle of selectedChildren) {
+                        if (existingFam && !existingFam.children.includes(childHandle)) {
+                            await addPersonAsChild(childHandle, targetFamilyHandle);
+                        }
+                    }
+                }
+
+                onDone(`✅ Đã thêm ${personName} làm ${spouseRole === 'father' ? 'cha' : 'mẹ'} của ${selectedChildren.length} người con`);
 
             } else if (mode === 'new-family') {
                 const newFH = await generateFamilyHandle();
@@ -312,10 +361,10 @@ function StepRelation({
                 if (r.error) { setError(r.error); setLoading(false); return; }
 
                 // Nếu personHandle là cha hoặc mẹ trong gia đình mới
-                const isParent = newFatherHandle === personHandle || newMotherHandle === personHandle;
+                const isParent = newFatherHandle === finalPersonHandle || newMotherHandle === finalPersonHandle;
                 if (isParent) {
-                    const role = newFatherHandle === personHandle ? 'father' : 'mother';
-                    await addPersonAsSpouse(personHandle, newFH, role);
+                    const role = newFatherHandle === finalPersonHandle ? 'father' : 'mother';
+                    await addPersonAsSpouse(finalPersonHandle, newFH, role);
                 }
                 onDone(`✅ Đã tạo gia đình mới ${newFH} và liên kết ${personName}`);
 
@@ -341,8 +390,8 @@ function StepRelation({
         {
             key: 'spouse' as RelationMode,
             icon: <GitMerge className="h-5 w-5" />,
-            title: 'Cha / Mẹ trong gia đình',
-            desc: 'Thêm người này làm cha hoặc mẹ trong gia đình đã có',
+            title: 'Cha / Mẹ của (Chọn con cái)',
+            desc: 'Thêm người này làm cha hoặc mẹ của những người con đã chọn',
             color: 'border-purple-300 bg-purple-50 dark:bg-purple-950/30',
             activeColor: 'border-purple-500 ring-2 ring-purple-300',
         },
@@ -369,7 +418,7 @@ function StepRelation({
             <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
                 <Badge variant="outline" className="font-mono">{personHandle}</Badge>
                 <span className="text-sm font-medium">{personName}</span>
-                <span className="text-xs text-muted-foreground ml-auto">đã được tạo ✓</span>
+                <span className="text-xs text-muted-foreground ml-auto">đang chờ hoàn tất...</span>
             </div>
 
             {/* Mode selection */}
@@ -432,16 +481,21 @@ function StepRelation({
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Chọn gia đình:</label>
+                        <label className="text-sm font-medium">Chọn con cái (Nhấn Ctrl/Cmd để chọn nhiều):</label>
                         <select
-                            id="relation-family-spouse"
-                            className="w-full rounded-md border px-3 py-2 text-sm bg-background dark:bg-background"
-                            value={selectedFamily}
-                            onChange={e => setSelectedFamily(e.target.value)}
+                            multiple
+                            id="relation-children-spouse"
+                            className="w-full rounded-md border px-3 py-2 text-sm bg-background dark:bg-background h-32"
+                            value={selectedChildren}
+                            onChange={e => {
+                                const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                setSelectedChildren(selected);
+                            }}
                         >
-                            <option value="">-- Chọn gia đình --</option>
-                            {families.map(f => (
-                                <option key={f.handle} value={f.handle}>{f.label}</option>
+                            {people.filter(p => !personGeneration || p.generation > personGeneration).map(p => (
+                                <option key={p.handle} value={p.handle}>
+                                    {p.displayName} (Đời {p.generation}) - {p.handle}
+                                </option>
                             ))}
                         </select>
                     </div>
@@ -451,7 +505,7 @@ function StepRelation({
             {mode === 'new-family' && (
                 <div className="space-y-3 p-3 rounded-lg border border-green-200 bg-green-50/50 dark:bg-green-950/20">
                     <p className="text-xs text-muted-foreground">
-                        Người vừa tạo (<strong>{personHandle}</strong>) sẽ được tự động gán vào gia đình mới này.
+                        Thành viên vừa tạo (<strong>{personHandle}</strong>) sẽ được tự động gán vào gia đình mới này khi bạn bấm hoàn tất.
                     </p>
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Chọn Cha (tùy chọn):</label>
@@ -608,37 +662,51 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
         setForm(prev => ({ ...prev, ...partial }));
     }, []);
 
-    // Step 1 → 2: tạo person trước
+    // Step 1 → 2: tạo person handle trước, nhưng CHƯA LƯU DB
     const handleNext = useCallback(async () => {
         setCreating(true);
         setCreateError(null);
         try {
             const handle = await generatePersonHandle();
-            const result = await addPerson({
-                handle,
-                displayName: form.displayName.trim(),
-                gender: form.gender,
-                generation: form.generation,
-                birthYear: form.birthYear ? parseInt(form.birthYear) : null,
-                deathYear: form.deathYear ? parseInt(form.deathYear) : null,
-                isLiving: form.isLiving,
-                families: [],
-                parentFamilies: [],
-            });
-            if (result.error) {
-                setCreateError(result.error);
-                return;
-            }
             setCreatedHandle(handle);
             setStep('relation');
-            // Refresh people list
-            fetchPeopleForSelect().then(setPeople);
+
+            // Thêm người ảo vào danh sách people để có thể chọn trong dropdown
+            setPeople(prev => {
+                const newPerson = {
+                    handle,
+                    displayName: form.displayName.trim() + ' (Mới)',
+                    generation: form.generation,
+                    gender: form.gender,
+                };
+                return [newPerson, ...prev.filter(p => p.handle !== handle)];
+            });
         } catch (e: unknown) {
             setCreateError(e instanceof Error ? e.message : 'Lỗi không xác định');
         } finally {
             setCreating(false);
         }
     }, [form]);
+
+    const handleCreatePerson = useCallback(async () => {
+        let handle = createdHandle;
+        if (!handle) {
+            handle = await generatePersonHandle();
+            setCreatedHandle(handle);
+        }
+        const result = await addPerson({
+            handle,
+            displayName: form.displayName.trim(),
+            gender: form.gender,
+            generation: form.generation,
+            birthYear: form.birthYear ? parseInt(form.birthYear) : null,
+            deathYear: form.deathYear ? parseInt(form.deathYear) : null,
+            isLiving: form.isLiving,
+            families: [],
+            parentFamilies: [],
+        });
+        return { error: result.error || undefined, handle };
+    }, [form, createdHandle]);
 
     const handleDone = useCallback((message: string) => {
         setDoneMessage(message);
@@ -698,6 +766,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         personGeneration={form.generation}
                         families={families}
                         people={people}
+                        onCreatePerson={handleCreatePerson}
                         onDone={handleDone}
                         onBack={() => setStep('info')}
                     />
