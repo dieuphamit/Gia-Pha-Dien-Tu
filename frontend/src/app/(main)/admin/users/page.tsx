@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { AddMemberDialog } from '@/components/add-member-dialog';
+import { insertAuditLog } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 
@@ -81,7 +82,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AdminUsersPage() {
-    const { isAdmin, loading: authLoading } = useAuth();
+    const { isAdmin, loading: authLoading, user: currentUser } = useAuth();
     const [users, setUsers] = useState<ProfileUser[]>([]);
     const [invites, setInvites] = useState<InviteLink[]>([]);
     const [loading, setLoading] = useState(true);
@@ -148,31 +149,75 @@ export default function AdminUsersPage() {
     const handleChangeRole = useCallback(async (userId: string, newRole: string) => {
         const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
         if (!error) {
+            const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+            if (currentUser) {
+                insertAuditLog({
+                    actorId: currentUser.id,
+                    action: 'UPDATE',
+                    entityType: 'profile',
+                    entityId: userId,
+                    entityName: target?.email,
+                    metadata: { field: 'role', newValue: newRole, oldValue: target?.role },
+                });
+            }
         }
-    }, []);
+    }, [users, currentUser]);
 
     const handleApprove = useCallback(async (userId: string) => {
         const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
         if (!error) {
+            const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+            if (currentUser) {
+                insertAuditLog({
+                    actorId: currentUser.id,
+                    action: 'APPROVE',
+                    entityType: 'profile',
+                    entityId: userId,
+                    entityName: target?.email,
+                    metadata: { field: 'status', newValue: 'active' },
+                });
+            }
         }
-    }, []);
+    }, [users, currentUser]);
 
     const handleReject = useCallback(async (userId: string) => {
         const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', userId);
         if (!error) {
+            const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
+            if (currentUser) {
+                insertAuditLog({
+                    actorId: currentUser.id,
+                    action: 'REJECT',
+                    entityType: 'profile',
+                    entityId: userId,
+                    entityName: target?.email,
+                    metadata: { field: 'status', newValue: 'rejected' },
+                });
+            }
         }
-    }, []);
+    }, [users, currentUser]);
 
     const handleToggleStatus = useCallback(async (userId: string, currentStatus: string) => {
         const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
         const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', userId);
         if (!error) {
+            const target = users.find(u => u.id === userId);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus } : u));
+            if (currentUser) {
+                insertAuditLog({
+                    actorId: currentUser.id,
+                    action: 'UPDATE',
+                    entityType: 'profile',
+                    entityId: userId,
+                    entityName: target?.email,
+                    metadata: { field: 'status', oldValue: currentStatus, newValue: newStatus },
+                });
+            }
         }
-    }, []);
+    }, [users, currentUser]);
 
     const handleCopy = useCallback(async (text: string) => {
         try {
@@ -332,11 +377,10 @@ export default function AdminUsersPage() {
                                 <button
                                     key={tab.key}
                                     onClick={() => setStatusFilter(tab.key)}
-                                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                                        statusFilter === tab.key
+                                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === tab.key
                                             ? 'bg-background shadow-sm text-foreground'
                                             : 'text-muted-foreground hover:text-foreground'
-                                    } ${tab.key === 'pending' && pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                                        } ${tab.key === 'pending' && pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
                                 >
                                     {tab.label}
                                 </button>

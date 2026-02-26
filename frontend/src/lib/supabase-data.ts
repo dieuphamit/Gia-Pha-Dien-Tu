@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Supabase data layer for the genealogy tree
  * Replaces localStorage-based persistence with Supabase PostgreSQL
  */
@@ -7,7 +7,31 @@ import type { TreeNode, TreeFamily } from './tree-layout';
 
 export type { TreeNode, TreeFamily };
 
-// ── Convert snake_case DB rows to camelCase ──
+// 笏笏 Audit log helper 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+
+/**
+ * Ghi audit log (fire-and-forget 窶・khﾃｴng block UI, khﾃｴng throw).
+ * actorId: UUID c盻ｧa ngﾆｰ盻拱 dﾃｹng hi盻㌻ t蘯｡i (t盻ｫ useAuth().user.id)
+ */
+export async function insertAuditLog(params: {
+    actorId: string;
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT';
+    entityType: string;
+    entityId?: string;
+    entityName?: string;
+    metadata?: Record<string, unknown>;
+}): Promise<void> {
+    supabase.from('audit_logs').insert({
+        actor_id: params.actorId,
+        action: params.action,
+        entity_type: params.entityType,
+        entity_id: params.entityId ?? null,
+        entity_name: params.entityName ?? null,
+        metadata: params.metadata ?? null,
+    }).then();
+}
+
+// 笏笏 Convert snake_case DB rows to camelCase 笏笏
 
 function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
     return {
@@ -34,7 +58,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
     };
 }
 
-// ── Read operations ──
+// 笏笏 Read operations 笏笏
 
 /** Fetch all people from Supabase */
 export async function fetchPeople(): Promise<TreeNode[]> {
@@ -71,19 +95,30 @@ export async function fetchTreeData(): Promise<{ people: TreeNode[]; families: T
     return { people, families };
 }
 
-// ── Write operations (editor mode) ──
+// 笏笏 Write operations (editor mode) 笏笏
 
 /** Update children order for a family */
 export async function updateFamilyChildren(
     familyHandle: string,
-    newChildrenOrder: string[]
+    newChildrenOrder: string[],
+    actorId?: string
 ): Promise<void> {
     const { error } = await supabase
         .from('families')
         .update({ children: newChildrenOrder })
         .eq('handle', familyHandle);
 
-    if (error) console.error('Failed to update family children:', error.message);
+    if (error) {
+        console.error('Failed to update family children:', error.message);
+    } else if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { children: newChildrenOrder },
+        });
+    }
 }
 
 /** Move a child from one family to another */
@@ -91,7 +126,8 @@ export async function moveChildToFamily(
     childHandle: string,
     fromFamilyHandle: string,
     toFamilyHandle: string,
-    currentFamilies: TreeFamily[]
+    currentFamilies: TreeFamily[],
+    actorId?: string
 ): Promise<void> {
     const fromFam = currentFamilies.find(f => f.handle === fromFamilyHandle);
     const toFam = currentFamilies.find(f => f.handle === toFamilyHandle);
@@ -126,13 +162,24 @@ export async function moveChildToFamily(
     }
 
     await Promise.all(updates);
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: childHandle,
+            metadata: { from: fromFamilyHandle, to: toFamilyHandle },
+        });
+    }
 }
 
 /** Remove a child from a family */
 export async function removeChildFromFamily(
     childHandle: string,
     familyHandle: string,
-    currentFamilies: TreeFamily[]
+    currentFamilies: TreeFamily[],
+    actorId?: string
 ): Promise<void> {
     const fam = currentFamilies.find(f => f.handle === familyHandle);
     const updates: Promise<unknown>[] = [];
@@ -159,6 +206,16 @@ export async function removeChildFromFamily(
     }
 
     await Promise.all(updates);
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { removed_child: childHandle },
+        });
+    }
 }
 
 /** Update a person's isLiving status */
@@ -197,9 +254,10 @@ export async function updatePerson(
         education?: string | null;
         notes?: string | null;
         biography?: string | null;
-    }
+    },
+    actorId?: string
 ): Promise<{ error: string | null }> {
-    // Convert camelCase → snake_case for DB
+    // Convert camelCase 竊・snake_case for DB
     const dbFields: Record<string, unknown> = {};
     if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
     if (fields.gender !== undefined) dbFields.gender = fields.gender;
@@ -227,7 +285,7 @@ export async function updatePerson(
         .from('people')
         .update(dbFields)
         .eq('handle', handle)
-        .select('handle');
+        .select('handle, display_name');
 
     console.log('[updatePerson] result:', { data, error: error?.message });
 
@@ -236,8 +294,21 @@ export async function updatePerson(
         return { error: error.message };
     }
     if (!data || data.length === 0) {
-        return { error: 'Không thể cập nhật. Bạn cần đăng nhập để có quyền sửa.' };
+        return { error: 'Khﾃｴng th盻・c蘯ｭp nh蘯ｭt. B蘯｡n c蘯ｧn ﾄ惰ハg nh蘯ｭp ﾄ黛ｻ・cﾃｳ quy盻］ s盻ｭa.' };
     }
+
+    if (actorId) {
+        const displayName = (data[0] as { display_name?: string }).display_name || handle;
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'people',
+            entityId: handle,
+            entityName: displayName,
+            metadata: { fields: Object.fromEntries(Object.entries(dbFields).map(([k, v]) => [k, v])) },
+        });
+    }
+
     return { error: null };
 }
 
@@ -252,7 +323,7 @@ export async function addPerson(person: {
     isLiving?: boolean;
     families?: string[];
     parentFamilies?: string[];
-}): Promise<{ error: string | null }> {
+}, actorId?: string): Promise<{ error: string | null }> {
     const { error } = await supabase
         .from('people')
         .insert({
@@ -273,11 +344,23 @@ export async function addPerson(person: {
         console.error('Failed to add person:', error.message);
         return { error: error.message };
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'CREATE',
+            entityType: 'people',
+            entityId: person.handle,
+            entityName: person.displayName,
+            metadata: { generation: person.generation, gender: person.gender, birthYear: person.birthYear },
+        });
+    }
+
     return { error: null };
 }
 
 /** Delete a person from the tree */
-export async function deletePerson(handle: string): Promise<{ error: string | null }> {
+export async function deletePerson(handle: string, actorId?: string, entityName?: string): Promise<{ error: string | null }> {
     const { error } = await supabase
         .from('people')
         .delete()
@@ -287,6 +370,17 @@ export async function deletePerson(handle: string): Promise<{ error: string | nu
         console.error('Failed to delete person:', error.message);
         return { error: error.message };
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'DELETE',
+            entityType: 'people',
+            entityId: handle,
+            entityName: entityName,
+        });
+    }
+
     return { error: null };
 }
 
@@ -323,15 +417,15 @@ async function verifiedUpdate(
         return { error: error.message };
     }
     if (!data || data.length === 0) {
-        return { error: `Không thể cập nhật ${table}. Bạn cần đăng nhập để có quyền sửa.` };
+        return { error: `Khﾃｴng th盻・c蘯ｭp nh蘯ｭt ${table}. B蘯｡n c蘯ｧn ﾄ惰ハg nh蘯ｭp ﾄ黛ｻ・cﾃｳ quy盻］ s盻ｭa.` };
     }
     return { error: null };
 }
 
 /** Add person as child to a parent family */
-export async function addPersonAsChild(personHandle: string, familyHandle: string): Promise<{ error: string | null }> {
+export async function addPersonAsChild(personHandle: string, familyHandle: string, actorId?: string): Promise<{ error: string | null }> {
     const fam = await fetchFamily(familyHandle);
-    if (!fam) return { error: 'Không tìm thấy gia đình ' + familyHandle };
+    if (!fam) return { error: 'Khﾃｴng tﾃｬm th蘯･y gia ﾄ妥ｬnh ' + familyHandle };
 
     if (!fam.children.includes(personHandle)) {
         const r1 = await verifiedUpdate('families', { children: [...fam.children, personHandle] }, 'handle', familyHandle);
@@ -348,11 +442,22 @@ export async function addPersonAsChild(personHandle: string, familyHandle: strin
         const r2 = await verifiedUpdate('people', { parent_families: [...currentPF, familyHandle] }, 'handle', personHandle);
         if (r2.error) return r2;
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { added_child: personHandle },
+        });
+    }
+
     return { error: null };
 }
 
 /** Remove person from a parent family */
-export async function removePersonFromParentFamily(personHandle: string, familyHandle: string): Promise<{ error: string | null }> {
+export async function removePersonFromParentFamily(personHandle: string, familyHandle: string, actorId?: string): Promise<{ error: string | null }> {
     const fam = await fetchFamily(familyHandle);
     if (fam) {
         const r1 = await verifiedUpdate('families', { children: fam.children.filter(c => c !== personHandle) }, 'handle', familyHandle);
@@ -368,17 +473,29 @@ export async function removePersonFromParentFamily(personHandle: string, familyH
         const r2 = await verifiedUpdate('people', { parent_families: currentPF.filter(pf => pf !== familyHandle) }, 'handle', personHandle);
         if (r2.error) return r2;
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { removed_child: personHandle },
+        });
+    }
+
     return { error: null };
 }
 
-/** Add person as spouse (cha/mẹ) to a family */
+/** Add person as spouse (cha/m蘯ｹ) to a family */
 export async function addPersonAsSpouse(
     personHandle: string,
     familyHandle: string,
-    role: 'father' | 'mother'
+    role: 'father' | 'mother',
+    actorId?: string
 ): Promise<{ error: string | null }> {
     const fam = await fetchFamily(familyHandle);
-    if (!fam) return { error: 'Không tìm thấy gia đình ' + familyHandle };
+    if (!fam) return { error: 'Khﾃｴng tﾃｬm th蘯･y gia ﾄ妥ｬnh ' + familyHandle };
 
     const field = role === 'father' ? 'father_handle' : 'mother_handle';
     const r1 = await verifiedUpdate('families', { [field]: personHandle }, 'handle', familyHandle);
@@ -394,6 +511,17 @@ export async function addPersonAsSpouse(
         const r2 = await verifiedUpdate('people', { families: [...currentFam, familyHandle] }, 'handle', personHandle);
         if (r2.error) return r2;
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { added_spouse: personHandle, role },
+        });
+    }
+
     return { error: null };
 }
 
@@ -401,7 +529,8 @@ export async function addPersonAsSpouse(
 export async function removePersonFromSpouseFamily(
     personHandle: string,
     familyHandle: string,
-    role: 'father' | 'mother'
+    role: 'father' | 'mother',
+    actorId?: string
 ): Promise<{ error: string | null }> {
     const field = role === 'father' ? 'father_handle' : 'mother_handle';
     const r1 = await verifiedUpdate('families', { [field]: null }, 'handle', familyHandle);
@@ -417,6 +546,17 @@ export async function removePersonFromSpouseFamily(
         const r2 = await verifiedUpdate('people', { families: currentFam.filter(f => f !== familyHandle) }, 'handle', personHandle);
         if (r2.error) return r2;
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'UPDATE',
+            entityType: 'families',
+            entityId: familyHandle,
+            metadata: { removed_spouse: personHandle, role },
+        });
+    }
+
     return { error: null };
 }
 
@@ -426,7 +566,7 @@ export async function addFamily(family: {
     fatherHandle?: string;
     motherHandle?: string;
     children?: string[];
-}): Promise<{ error: string | null }> {
+}, actorId?: string): Promise<{ error: string | null }> {
     const { error } = await supabase
         .from('families')
         .insert({
@@ -440,6 +580,17 @@ export async function addFamily(family: {
         console.error('Failed to add family:', error.message);
         return { error: error.message };
     }
+
+    if (actorId) {
+        insertAuditLog({
+            actorId,
+            action: 'CREATE',
+            entityType: 'families',
+            entityId: family.handle,
+            metadata: { fatherHandle: family.fatherHandle, motherHandle: family.motherHandle },
+        });
+    }
+
     return { error: null };
 }
 
@@ -520,7 +671,7 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
         const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;
         const parts = [fatherName, motherName].filter(Boolean);
         const label = parts.length > 0
-            ? `${f.handle} — ${parts.join(' & ')}`
+            ? `${f.handle} 窶・${parts.join(' & ')}`
             : f.handle;
         return { handle: f.handle, fatherName, motherName, label };
     });
@@ -548,7 +699,7 @@ export async function fetchPeopleForSelect(): Promise<Array<{
     }));
 }
 
-// ── Contribution helpers ──────────────────────────────────────
+// 笏笏 Contribution helpers 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 export type ContributionType =
     | 'edit_person_field'
@@ -612,3 +763,4 @@ export async function fetchMyContributions(userId: string): Promise<Contribution
         .order('created_at', { ascending: false });
     return (data as Contribution[]) || [];
 }
+

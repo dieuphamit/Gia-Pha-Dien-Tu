@@ -436,6 +436,48 @@ CREATE POLICY "authenticated can read invite_links" ON invite_links
     FOR SELECT USING (auth.role() = 'authenticated');
 
 
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  11. AUDIT_LOGS (lịch sử hành động editor/admin)        ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id     UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    action       TEXT        NOT NULL
+                             CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT')),
+    entity_type  TEXT        NOT NULL,  -- 'people' | 'families' | 'contribution' | 'profile' | ...
+    entity_id    TEXT,                  -- handle hoặc UUID của đối tượng
+    entity_name  TEXT,                  -- tên hiển thị (display_name, email, ...)
+    metadata     JSONB,                 -- chi tiết thay đổi (fields, old/new values, ...)
+    created_at   TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor   ON audit_logs (actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity  ON audit_logs (entity_type, entity_id);
+
+-- ── audit_logs RLS ───────────────────────────────────────────
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Chỉ admin được đọc log
+CREATE POLICY "admin can read audit_logs"
+    ON audit_logs FOR SELECT
+    USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- Editor/admin được ghi log
+CREATE POLICY "editor or admin can insert audit_logs"
+    ON audit_logs FOR INSERT
+    WITH CHECK (
+        auth.role() = 'authenticated' AND
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+
+-- Service role (API routes) cũng được ghi log
+CREATE POLICY "service role can insert audit_logs"
+    ON audit_logs FOR INSERT
+    WITH CHECK (auth.role() = 'service_role');
+
+
 -- ============================================================
 SELECT '✅ DDL setup complete! Chạy DML.sql để nạp dữ liệu mẫu.' AS status;
 -- ============================================================

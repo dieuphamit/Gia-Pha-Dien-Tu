@@ -14,15 +14,15 @@ import {
 
 // ── Auth helper ──────────────────────────────────────────────
 
-async function getCallerRole(request: NextRequest): Promise<string | null> {
+async function getCallerInfo(request: NextRequest): Promise<{ role: string | null; userId: string | null }> {
     const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) return null;
+    if (!authHeader?.startsWith('Bearer ')) return { role: null, userId: null };
 
     const token = authHeader.slice(7);
     const serviceClient = createServiceClient();
 
     const { data: { user }, error } = await serviceClient.auth.getUser(token);
-    if (error || !user) return null;
+    if (error || !user) return { role: null, userId: null };
 
     const { data: profile } = await serviceClient
         .from('profiles')
@@ -30,7 +30,7 @@ async function getCallerRole(request: NextRequest): Promise<string | null> {
         .eq('id', user.id)
         .maybeSingle();
 
-    return profile?.role ?? null;
+    return { role: profile?.role ?? null, userId: user.id };
 }
 
 // ── Main handler ─────────────────────────────────────────────
@@ -38,7 +38,7 @@ async function getCallerRole(request: NextRequest): Promise<string | null> {
 export async function POST(request: NextRequest) {
     try {
         // 1. Verify caller is admin or editor
-        const role = await getCallerRole(request);
+        const { role, userId: callerId } = await getCallerInfo(request);
         if (!role || !['admin', 'editor'].includes(role)) {
             return NextResponse.json({ ok: false, error: 'Không có quyền thực hiện' }, { status: 403 });
         }
@@ -99,6 +99,24 @@ export async function POST(request: NextRequest) {
                 .from('contributions')
                 .update({ applied_at: new Date().toISOString() })
                 .eq('id', contributionId);
+        }
+
+        // 6. Write audit log
+        if (callerId && !result.skipped) {
+            await serviceClient.from('audit_logs').insert({
+                actor_id: callerId,
+                action: result.ok ? 'APPROVE' : 'REJECT',
+                entity_type: 'contribution',
+                entity_id: contributionId,
+                entity_name: (contribution.person_name as string) || (contribution.field_label as string) || (contribution.field_name as string),
+                metadata: {
+                    field_name: contribution.field_name,
+                    person_handle: contribution.person_handle,
+                    author_email: contribution.author_email,
+                    inserted_id: result.insertedId,
+                    error: result.error,
+                },
+            });
         }
 
         return NextResponse.json(result);
