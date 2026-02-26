@@ -211,33 +211,52 @@ function ContributionPreview({ contribution }: { contribution: Contribution }) {
     let parsed: Record<string, unknown> | null = null;
     try { parsed = JSON.parse(contribution.new_value); } catch { /* plain text */ }
 
+    // Plain text
     if (!parsed) {
+        return <p className="text-sm text-muted-foreground bg-muted/50 rounded px-2 py-1">{contribution.new_value}</p>;
+    }
+
+    // Sửa thông tin thành viên — nhận diện theo field_name hoặc cấu trúc JSON
+    const isEditField = contribution.field_name === 'edit_person_field'
+        || (typeof parsed.dbColumn === 'string' && typeof parsed.label === 'string' && 'value' in parsed);
+    if (isEditField) {
+        const e = parsed as { label?: string; value?: string };
+        const fieldLabel = e.label || contribution.field_label || 'Trường thông tin';
+        const displayValue = e.value === 'true' ? 'Còn sống'
+            : e.value === 'false' ? 'Đã mất'
+            : e.value || '(xóa trắng)';
+        const oldDisplay = contribution.old_value === 'true' ? 'Còn sống'
+            : contribution.old_value === 'false' ? 'Đã mất'
+            : contribution.old_value || '(chưa có)';
         return (
-            <p className="text-sm text-muted-foreground bg-muted/50 rounded px-2 py-1 truncate">
-                {contribution.new_value}
-            </p>
+            <div className="text-xs bg-muted/50 rounded px-2 py-1.5 flex items-center gap-1.5 flex-wrap">
+                <span className="font-medium">{fieldLabel}:</span>
+                <span className="text-muted-foreground line-through">{oldDisplay}</span>
+                <span className="text-muted-foreground">→</span>
+                <span className="font-semibold">{displayValue}</span>
+            </div>
         );
     }
 
     if (contribution.field_name === 'add_person') {
         const p = parsed as { displayName?: string; generation?: number; birthYear?: number; gender?: number };
         return (
-            <div className="text-xs bg-muted/50 rounded px-2 py-1.5 space-y-0.5">
-                <p><span className="text-muted-foreground">Họ tên:</span> {p.displayName}</p>
-                {p.generation && <p><span className="text-muted-foreground">Đời:</span> {p.generation}</p>}
-                {p.birthYear && <p><span className="text-muted-foreground">Năm sinh:</span> {p.birthYear}</p>}
-                <p><span className="text-muted-foreground">Giới tính:</span> {p.gender === 1 ? 'Nam' : 'Nữ'}</p>
+            <div className="text-xs bg-muted/50 rounded px-2 py-1.5">
+                <span className="font-medium">{p.displayName}</span>
+                <span className="text-muted-foreground ml-1">
+                    — {p.gender === 1 ? 'Nam' : 'Nữ'}, đời {p.generation}{p.birthYear ? `, sinh ${p.birthYear}` : ''}
+                </span>
             </div>
         );
     }
 
     if (contribution.field_name === 'add_event') {
-        const e = parsed as { title?: string; startAt?: string; location?: string; type?: string };
+        const e = parsed as { title?: string; startAt?: string; location?: string };
         return (
-            <div className="text-xs bg-muted/50 rounded px-2 py-1.5 space-y-0.5">
-                <p><span className="text-muted-foreground">Tiêu đề:</span> {e.title}</p>
-                {e.startAt && <p><span className="text-muted-foreground">Ngày:</span> {new Date(e.startAt).toLocaleDateString('vi-VN')}</p>}
-                {e.location && <p><span className="text-muted-foreground">Địa điểm:</span> {e.location}</p>}
+            <div className="text-xs bg-muted/50 rounded px-2 py-1.5">
+                <span className="font-medium">{e.title}</span>
+                {e.startAt && <span className="text-muted-foreground ml-1">— {new Date(e.startAt).toLocaleDateString('vi-VN')}</span>}
+                {e.location && <span className="text-muted-foreground"> tại {e.location}</span>}
             </div>
         );
     }
@@ -246,25 +265,30 @@ function ContributionPreview({ contribution }: { contribution: Contribution }) {
         const p = parsed as { title?: string; body?: string };
         return (
             <div className="text-xs bg-muted/50 rounded px-2 py-1.5">
-                {p.title && <p className="font-medium">{p.title}</p>}
-                <p className="text-muted-foreground line-clamp-2">{p.body}</p>
+                {p.title && <span className="font-medium">{p.title} — </span>}
+                <span className="text-muted-foreground line-clamp-1">{p.body}</span>
             </div>
         );
     }
 
     if (contribution.field_name === 'add_quiz_question') {
-        const q = parsed as { question?: string; correctAnswer?: string };
+        const q = parsed as { question?: string };
         return (
-            <div className="text-xs bg-muted/50 rounded px-2 py-1.5 space-y-0.5">
-                <p><span className="text-muted-foreground">Câu hỏi:</span> {q.question}</p>
-                <p><span className="text-muted-foreground">Đáp án:</span> {q.correctAnswer}</p>
+            <div className="text-xs bg-muted/50 rounded px-2 py-1.5">
+                <span className="text-muted-foreground">Câu hỏi: </span>
+                <span className="font-medium">{q.question}</span>
             </div>
         );
     }
 
+    // Fallback — key-value thay vì JSON raw
     return (
-        <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 truncate">
-            {contribution.new_value}
-        </p>
+        <div className="text-xs bg-muted/50 rounded px-2 py-1.5 space-y-0.5">
+            {Object.entries(parsed).map(([k, v]) =>
+                v !== null && v !== undefined && v !== '' ? (
+                    <span key={k} className="mr-2"><span className="text-muted-foreground">{k}:</span> {String(v)}</span>
+                ) : null
+            )}
+        </div>
     );
 }

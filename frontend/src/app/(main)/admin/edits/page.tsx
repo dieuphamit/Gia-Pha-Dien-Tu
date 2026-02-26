@@ -41,32 +41,12 @@ function ContributionValuePreview({ contribution }: { contribution: Contribution
 
     const hint = TYPE_ACTION_HINTS[contribution.field_name];
 
+    // ── Plain text (non-JSON) ─────────────────────────────────
     if (!parsed) {
         return (
-            <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-xs font-medium text-muted-foreground mb-1">Giá trị mới:</p>
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Nội dung đề xuất</p>
                 <p className="text-sm font-medium">{contribution.new_value}</p>
-                {contribution.note && (
-                    <p className="text-xs text-muted-foreground mt-2 italic">📝 {contribution.note}</p>
-                )}
-            </div>
-        );
-    }
-
-    if (contribution.field_name === 'edit_person_field') {
-        const e = parsed as { dbColumn?: string; label?: string; value?: string };
-        const hint = TYPE_ACTION_HINTS['edit_person_field'];
-        return (
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">✏️ Đề xuất sửa thông tin:</p>
-                <div className="text-sm space-y-0.5">
-                    <span className="text-muted-foreground text-xs">{e.label ?? contribution.field_label}:</span>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="line-through text-muted-foreground">{contribution.old_value || '(trống)'}</span>
-                        <span className="text-muted-foreground">→</span>
-                        <strong>{e.value}</strong>
-                    </div>
-                </div>
                 {contribution.note && (
                     <p className="text-xs text-muted-foreground italic">📝 {contribution.note}</p>
                 )}
@@ -75,61 +55,97 @@ function ContributionValuePreview({ contribution }: { contribution: Contribution
         );
     }
 
-    if (contribution.field_name === 'add_person') {
-        const p = parsed as { displayName?: string; gender?: number; generation?: number; birthYear?: number; deathYear?: number; isLiving?: boolean; occupation?: string; currentAddress?: string; phone?: string; email?: string; relationHint?: string };
+    // ── Sửa thông tin thành viên ─────────────────────────────
+    // Nhận diện theo field_name HOẶC theo cấu trúc JSON {dbColumn, label, value}
+    const isEditField = contribution.field_name === 'edit_person_field'
+        || (typeof parsed.dbColumn === 'string' && typeof parsed.label === 'string' && 'value' in parsed);
+    if (isEditField) {
+        const e = parsed as { dbColumn?: string; label?: string; value?: string };
+        const fieldLabel = e.label || contribution.field_label || e.dbColumn || 'Trường thông tin';
+        const displayValue = e.value !== undefined ? String(e.value) : '—';
+        // Humanize boolean values
+        const humanValue = displayValue === 'true' ? 'Còn sống'
+            : displayValue === 'false' ? 'Đã mất'
+            : displayValue || '(xóa trắng)';
+        const humanOld = contribution.old_value === 'true' ? 'Còn sống'
+            : contribution.old_value === 'false' ? 'Đã mất'
+            : contribution.old_value || '(chưa có)';
         return (
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">👤 Thành viên mới đề xuất:</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                    <span><span className="text-muted-foreground">Họ tên:</span> <strong>{p.displayName}</strong></span>
-                    <span><span className="text-muted-foreground">Giới tính:</span> {p.gender === 1 ? 'Nam' : 'Nữ'}</span>
-                    <span><span className="text-muted-foreground">Đời:</span> {p.generation}</span>
-                    {p.birthYear && <span><span className="text-muted-foreground">Năm sinh:</span> {p.birthYear}</span>}
-                    {p.deathYear && <span><span className="text-muted-foreground">Năm mất:</span> {p.deathYear}</span>}
-                    <span><span className="text-muted-foreground">Trạng thái:</span> {p.isLiving ? 'Còn sống' : 'Đã mất'}</span>
-                    {p.occupation && <span><span className="text-muted-foreground">Nghề nghiệp:</span> {p.occupation}</span>}
-                    {p.currentAddress && <span><span className="text-muted-foreground">Địa chỉ:</span> {p.currentAddress}</span>}
-                    {p.phone && <span><span className="text-muted-foreground">SĐT:</span> {p.phone}</span>}
-                    {p.email && <span><span className="text-muted-foreground">Email:</span> {p.email}</span>}
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Đề xuất thay đổi</p>
+                <div className="flex items-baseline gap-2 flex-wrap text-sm">
+                    <span className="font-medium text-foreground">{fieldLabel}:</span>
+                    <span className="text-muted-foreground line-through text-xs">{humanOld}</span>
+                    <span className="text-muted-foreground text-xs">→</span>
+                    <span className="font-semibold text-foreground">{humanValue}</span>
                 </div>
-                {p.relationHint && <p className="text-xs italic text-muted-foreground mt-1">🔗 Quan hệ: {p.relationHint}</p>}
-                {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1 mt-1">{hint}</p>}
-            </div>
-        );
-    }
-
-    if (contribution.field_name === 'delete_person') {
-        return (
-            <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200">
-                <p className="text-xs font-medium text-red-700">🗑️ Đề xuất xóa thành viên: <strong>{contribution.new_value}</strong></p>
-                {contribution.note && <p className="text-xs text-red-600 mt-1 italic">Lý do: {contribution.note}</p>}
-                {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1 mt-1">{hint}</p>}
-            </div>
-        );
-    }
-
-    if (contribution.field_name === 'add_event') {
-        const e = parsed as { title?: string; description?: string; startAt?: string; location?: string; type?: string };
-        return (
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">📅 Sự kiện đề xuất:</p>
-                <p className="text-sm font-semibold">{e.title}</p>
-                {e.description && <p className="text-xs text-muted-foreground">{e.description}</p>}
-                <div className="flex flex-wrap gap-3 text-xs">
-                    {e.startAt && <span>🕐 {new Date(e.startAt).toLocaleString('vi-VN')}</span>}
-                    {e.location && <span>📍 {e.location}</span>}
-                    {e.type && <span>🏷️ {e.type}</span>}
-                </div>
+                {contribution.note && (
+                    <p className="text-xs text-muted-foreground italic">📝 Lý do: {contribution.note}</p>
+                )}
                 {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
             </div>
         );
     }
 
+    // ── Thêm thành viên ──────────────────────────────────────
+    if (contribution.field_name === 'add_person') {
+        const p = parsed as { displayName?: string; gender?: number; generation?: number; birthYear?: number; deathYear?: number; isLiving?: boolean; occupation?: string; currentAddress?: string; phone?: string; email?: string; relationHint?: string };
+        return (
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Thêm thành viên mới vào gia phả</p>
+                <p className="text-sm font-semibold">{p.displayName} <span className="font-normal text-muted-foreground text-xs">— {p.gender === 1 ? 'Nam' : 'Nữ'}, đời {p.generation}</span></p>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                    {p.birthYear && <span>Sinh {p.birthYear}</span>}
+                    {p.deathYear && <span>Mất {p.deathYear}</span>}
+                    {!p.deathYear && <span>{p.isLiving ? 'Còn sống' : 'Đã mất'}</span>}
+                    {p.occupation && <span>• {p.occupation}</span>}
+                    {p.currentAddress && <span>• {p.currentAddress}</span>}
+                    {p.phone && <span>• SĐT: {p.phone}</span>}
+                    {p.email && <span>• {p.email}</span>}
+                </div>
+                {p.relationHint && <p className="text-xs italic text-muted-foreground">🔗 {p.relationHint}</p>}
+                {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
+            </div>
+        );
+    }
+
+    // ── Xóa thành viên ───────────────────────────────────────
+    if (contribution.field_name === 'delete_person') {
+        return (
+            <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3 border border-red-200 space-y-1">
+                <p className="text-xs text-red-600">Yêu cầu xóa khỏi gia phả</p>
+                <p className="text-sm font-semibold text-red-800 dark:text-red-300">{contribution.person_name || contribution.new_value}</p>
+                {contribution.note && <p className="text-xs text-red-600 italic">Lý do: {contribution.note}</p>}
+                {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
+            </div>
+        );
+    }
+
+    // ── Thêm sự kiện ────────────────────────────────────────
+    if (contribution.field_name === 'add_event') {
+        const e = parsed as { title?: string; description?: string; startAt?: string; location?: string; type?: string };
+        const typeLabel: Record<string, string> = { MEMORIAL: 'Giỗ / tưởng niệm', MEETING: 'Họp mặt', FESTIVAL: 'Lễ hội', OTHER: 'Khác' };
+        return (
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                <p className="text-xs text-muted-foreground">Đề xuất tạo sự kiện</p>
+                <p className="text-sm font-semibold">{e.title}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                    {e.startAt && <span>🗓 {new Date(e.startAt).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}</span>}
+                    {e.location && <span>📍 {e.location}</span>}
+                    {e.type && <span>• {typeLabel[e.type.toUpperCase()] || e.type}</span>}
+                </div>
+                {e.description && <p className="text-xs text-muted-foreground line-clamp-2">{e.description}</p>}
+                {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
+            </div>
+        );
+    }
+
+    // ── Thêm bài viết ────────────────────────────────────────
     if (contribution.field_name === 'add_post') {
         const p = parsed as { title?: string; body?: string };
         return (
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">📰 Bài viết đề xuất:</p>
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                <p className="text-xs text-muted-foreground">Đề xuất đăng bảng tin</p>
                 {p.title && <p className="text-sm font-semibold">{p.title}</p>}
                 <p className="text-sm text-muted-foreground line-clamp-3">{p.body}</p>
                 {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
@@ -137,27 +153,37 @@ function ContributionValuePreview({ contribution }: { contribution: Contribution
         );
     }
 
+    // ── Thêm câu hỏi xác minh ────────────────────────────────
     if (contribution.field_name === 'add_quiz_question') {
         const q = parsed as { question?: string; correctAnswer?: string; hint?: string };
         return (
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">❓ Câu hỏi xác minh đề xuất:</p>
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                <p className="text-xs text-muted-foreground">Đề xuất câu hỏi xác minh danh tính</p>
                 <p className="text-sm font-semibold">{q.question}</p>
-                <p className="text-xs"><span className="text-muted-foreground">Đáp án:</span> <strong>{q.correctAnswer}</strong></p>
+                <p className="text-xs">Đáp án đúng: <strong>{q.correctAnswer}</strong></p>
                 {q.hint && <p className="text-xs text-muted-foreground">Gợi ý: {q.hint}</p>}
                 {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
             </div>
         );
     }
 
-    // Fallback for unknown JSON types
+    // ── Fallback: JSON không xác định loại ──────────────────
+    // Hiển thị dạng key-value thay vì raw JSON
     return (
-        <div className="bg-muted/50 rounded-lg p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Giá trị mới:</p>
-            <pre className="text-xs overflow-auto max-h-32">{JSON.stringify(parsed, null, 2)}</pre>
+        <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+            <p className="text-xs text-muted-foreground">Nội dung đề xuất</p>
+            {Object.entries(parsed).map(([k, v]) => (
+                v !== null && v !== undefined && v !== '' ? (
+                    <div key={k} className="text-xs flex gap-1.5">
+                        <span className="text-muted-foreground shrink-0 capitalize">{k}:</span>
+                        <span className="font-medium break-all">{String(v)}</span>
+                    </div>
+                ) : null
+            ))}
             {contribution.note && (
-                <p className="text-xs text-muted-foreground mt-2 italic">📝 {contribution.note}</p>
+                <p className="text-xs text-muted-foreground italic">📝 {contribution.note}</p>
             )}
+            {hint && <p className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">{hint}</p>}
         </div>
     );
 }
