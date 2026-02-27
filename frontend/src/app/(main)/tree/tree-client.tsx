@@ -1580,8 +1580,20 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     const allParentFamilies = treeData.families.filter(f => f.fatherHandle || f.motherHandle);
     const parentFamiliesWithLabels = allParentFamilies.map(f => {
         const father = treeData.people.find(p => p.handle === f.fatherHandle);
-        const gen = father ? (father as any).generation : '';
-        const label = father ? father.displayName : f.handle;
+        const mother = treeData.people.find(p => p.handle === f.motherHandle);
+        const gen = father ? (father as any).generation : (mother ? (mother as any).generation : '');
+        const fatherName = father?.displayName;
+        const motherName = mother?.displayName;
+        let label: string;
+        if (fatherName && motherName) {
+            label = `${fatherName} & ${motherName}`;
+        } else if (fatherName) {
+            label = fatherName;
+        } else if (motherName) {
+            label = motherName;
+        } else {
+            label = f.handle;
+        }
         return { ...f, label, gen };
     });
 
