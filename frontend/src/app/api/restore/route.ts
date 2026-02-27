@@ -16,6 +16,7 @@ export interface BackupData {
     event_rsvps?: Record<string, unknown>[];
     family_questions?: Record<string, unknown>[];
     contributions?: Record<string, unknown>[];
+    audit_logs?: Record<string, unknown>[];
 }
 
 export interface RestoreTableResult {
@@ -134,6 +135,7 @@ export async function POST(request: NextRequest) {
                 { key: 'event_rsvps', table: 'event_rsvps', conflictCol: 'id' },
                 { key: 'family_questions', table: 'family_questions', conflictCol: 'id' },
                 { key: 'contributions', table: 'contributions', conflictCol: 'id' },
+                { key: 'audit_logs', table: 'audit_logs', conflictCol: 'id' },
             ];
 
         for (const { key, table, conflictCol } of tablePlan) {

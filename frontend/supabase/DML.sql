@@ -1,13 +1,21 @@
 -- ============================================================
 -- 🌳 Gia Phả Điện Tử — DML (Data Manipulation Language)
 -- ============================================================
--- Dữ liệu mẫu demo: dòng họ Phạm — 5 thế hệ, 25 thành viên
+-- Dữ liệu khởi tạo và dữ liệu mẫu demo
 -- Chạy file này SAU DDL.sql
--- Xóa toàn bộ phần này nếu dùng dữ liệu thật
+--
+-- Sections:
+--   1. people       — 25 thành viên demo (5 thế hệ, dòng họ Phạm)
+--   2. families     — 7 gia đình (quan hệ cha/mẹ/con)
+--   3. family_questions — 5 câu hỏi xác minh
+--   4. app_settings — giá trị mặc định tính năng
+--   5. storage      — tạo bucket 'media' trên Supabase Storage
+--
+-- ⚠️  Xóa sections 1-3 nếu dùng dữ liệu thật
 -- ============================================================
 --
--- Cấu trúc cây:
---   Đời 1 : Phạm Hướng (F001, không có vợ trong cây)
+-- Cấu trúc cây demo:
+--   Đời 1 : Phạm Hướng (F001)
 --   Đời 2 : Phạm Quang Viên + Đinh Thị Khai (F002)
 --   Đời 3 : 8 con của F002 + vợ/chồng ngoại tộc
 --   Đời 4 : con của từng nhánh Đời 3
@@ -16,7 +24,7 @@
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  1. PEOPLE                                              ║
+-- ║  1. PEOPLE (dữ liệu mẫu — xóa nếu dùng dữ liệu thật)  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO people (
@@ -53,7 +61,7 @@ INSERT INTO people (
 -- ── Đời 4: con F006 (Phạm Quang Diệu + Ngô Huỳnh Yến Tiên) ─
 ('P017', 'Phạm Tiên Đan',           2, 4,  2024, NULL, true,  true,  '{}',       '{"F006"}', 'Japan',    'Em bé'),
 
--- ── Đời 4: 5 con F007 (Nguyễn Phước Hải + Phạm Thị Hoài Nga), sắp xếp lớn→nhỏ
+-- ── Đời 4: 5 con F007 (Nguyễn Phước Hải + Phạm Thị Hoài Nga), lớn→nhỏ
 ('P019', 'Nguyễn Nữ Thuỳ Trang',    2, 4,  1996, NULL, true,  false, '{}',       '{"F007"}', 'Đồng Nai', 'Kế Toán'),
 ('P020', 'Nguyễn Thị Thuỳ Tiên',    2, 4,  1998, NULL, true,  false, '{"F009"}', '{"F007"}', 'Đắk Mil',  'NV Bưu Điện'),
 ('P021', 'Nguyễn Nữ Hoài Trâm',     2, 4,  2001, NULL, true,  false, '{"F008"}', '{"F007"}', 'TP HCM',   'NV Văn Phòng'),
@@ -72,7 +80,7 @@ ON CONFLICT (handle) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  2. FAMILIES                                            ║
+-- ║  2. FAMILIES (dữ liệu mẫu — xóa nếu dùng dữ liệu thật) ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
@@ -95,19 +103,44 @@ ON CONFLICT (handle) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  3. FAMILY_QUESTIONS (câu hỏi xác minh gia đình)        ║
+-- ║  3. FAMILY_QUESTIONS (xóa / thay thế bằng câu thật)    ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO family_questions (question, correct_answer, hint, is_active) VALUES
-('Tên của ông tổ (thế hệ 1) trong dòng họ là gì?', 'Phạm Hướng', 'Ông sinh năm 1920',         true),
-('Ông Phạm Quang Viên là con của ai?',              'Phạm Hướng', 'Ông tổ đời 1',               true),
-('Họ của dòng họ chúng ta là gì?',                  'Phạm',       'Họ phổ biến ở Việt Nam',     true),
-('Ông Phạm Quang Viên sinh năm bao nhiêu?',         '1945',       'Năm sau Thế chiến 2',        true),
-('Ông Phạm Quang Diệu đang sống ở nước nào?',       'Japan',      'Nước Nhật Bản',              true)
+('Tên của ông tổ (thế hệ 1) trong dòng họ là gì?', 'Phạm Hướng', 'Ông sinh năm 1920',     true),
+('Ông Phạm Quang Viên là con của ai?',              'Phạm Hướng', 'Ông tổ đời 1',           true),
+('Họ của dòng họ chúng ta là gì?',                  'Phạm',       'Họ phổ biến ở Việt Nam', true),
+('Ông Phạm Quang Viên sinh năm bao nhiêu?',         '1945',       'Năm sau Thế chiến 2',    true),
+('Ông Phạm Quang Diệu đang sống ở nước nào?',       'Japan',      'Nước Nhật Bản',          true)
 
 ON CONFLICT DO NOTHING;
 
 
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  4. APP_SETTINGS (giá trị mặc định — giữ lại cho prod)  ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+INSERT INTO app_settings (key, value, description) VALUES
+('feature_media_enabled', 'true', 'Bật/tắt chức năng Thư viện hình ảnh & tài liệu'),
+('media_upload_limit',    '5',    'Số lượng file tối đa mỗi thành viên được tải lên (admin & editor không bị giới hạn)')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  5. STORAGE (tạo bucket media — giữ lại cho prod)       ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'media',
+    'media',
+    true,
+    52428800,   -- 50 MB
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
+)
+ON CONFLICT (id) DO NOTHING;
+
+
 -- ============================================================
-SELECT '✅ DML data loaded! Dữ liệu mẫu đã được nạp.' AS status;
+SELECT '✅ DML data loaded! Dữ liệu đã được nạp.' AS status;
 -- ============================================================

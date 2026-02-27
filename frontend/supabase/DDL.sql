@@ -4,18 +4,38 @@
 -- Tạo toàn bộ cấu trúc database từ đầu:
 --   tables, indexes, functions, triggers, views, RLS
 -- Chạy file này TRƯỚC DML.sql
--- Tổng hợp từ: database-setup.sql + tất cả migration files
+--
+-- Tables (16):
+--   Core     : people, families
+--   Auth     : profiles, invite_links
+--   Content  : contributions, comments, posts, post_comments
+--   Community: events, event_rsvps, family_questions, notifications
+--   Admin    : audit_logs, app_settings, bug_reports, media
 -- ============================================================
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  1. CORE TABLES: people + families                      ║
+-- ║  SHARED: Trigger function update_updated_at             ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Dùng chung cho tất cả bảng có cột updated_at
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  1. people + families (cốt lõi gia phả)                ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS people (
-    handle               TEXT PRIMARY KEY,
+    handle               TEXT         PRIMARY KEY,
     gramps_id            TEXT,
-    gender               INT          NOT NULL DEFAULT 1,    -- 1=Nam, 2=Nữ
+    gender               INT          NOT NULL DEFAULT 1,     -- 1=Nam, 2=Nữ
     display_name         TEXT         NOT NULL,
     surname              TEXT,
     first_name           TEXT,
@@ -29,9 +49,9 @@ CREATE TABLE IF NOT EXISTS people (
     death_place          TEXT,
     is_living            BOOLEAN      DEFAULT true,
     is_privacy_filtered  BOOLEAN      DEFAULT false,
-    is_patrilineal       BOOLEAN      DEFAULT true,          -- true=chính tộc, false=ngoại tộc
-    families             TEXT[]       DEFAULT '{}',          -- family handles mà người này là cha/mẹ
-    parent_families      TEXT[]       DEFAULT '{}',          -- family handles mà người này là con
+    is_patrilineal       BOOLEAN      DEFAULT true,           -- true=chính tộc, false=ngoại tộc
+    families             TEXT[]       DEFAULT '{}',           -- family handles mà người này là cha/mẹ
+    parent_families      TEXT[]       DEFAULT '{}',           -- family handles mà người này là con
     phone                TEXT,
     email                TEXT,
     zalo                 TEXT,
@@ -49,7 +69,7 @@ CREATE TABLE IF NOT EXISTS people (
 );
 
 CREATE TABLE IF NOT EXISTS families (
-    handle         TEXT PRIMARY KEY,
+    handle         TEXT        PRIMARY KEY,
     father_handle  TEXT,
     mother_handle  TEXT,
     children       TEXT[]      DEFAULT '{}',
@@ -57,20 +77,10 @@ CREATE TABLE IF NOT EXISTS families (
     updated_at     TIMESTAMPTZ DEFAULT now()
 );
 
--- Indexes
 CREATE INDEX IF NOT EXISTS idx_people_generation ON people (generation);
 CREATE INDEX IF NOT EXISTS idx_people_surname    ON people (surname);
 CREATE INDEX IF NOT EXISTS idx_families_father   ON families (father_handle);
 CREATE INDEX IF NOT EXISTS idx_families_mother   ON families (mother_handle);
-
--- Trigger function: tự động cập nhật updated_at
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER people_updated_at
     BEFORE UPDATE ON people
@@ -82,26 +92,26 @@ CREATE TRIGGER families_updated_at
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  2. AUTH: profiles + trigger tạo profile tự động       ║
+-- ║  2. profiles (xác thực & phân quyền)                   ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Roles: admin > editor > member
 -- Status: pending (chờ duyệt) → active | rejected | suspended
 CREATE TABLE IF NOT EXISTS profiles (
-    id           UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email        TEXT        UNIQUE NOT NULL,
-    display_name TEXT,
-    role         TEXT        NOT NULL DEFAULT 'member'
-                             CHECK (role IN ('admin', 'editor', 'member')),
-    status       TEXT        NOT NULL DEFAULT 'pending'
-                             CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
+    id            UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email         TEXT        UNIQUE NOT NULL,
+    display_name  TEXT,
+    role          TEXT        NOT NULL DEFAULT 'member'
+                              CHECK (role IN ('admin', 'editor', 'member')),
+    status        TEXT        NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
     person_handle TEXT,
-    avatar_url   TEXT,
-    created_at   TIMESTAMPTZ DEFAULT now()
+    avatar_url    TEXT,
+    created_at    TIMESTAMPTZ DEFAULT now()
 );
 
--- Tự động tạo profile khi user đăng ký
--- Fault-tolerant: lỗi trigger không block quá trình đăng ký,
+-- Tự động tạo profile khi user đăng ký.
+-- Fault-tolerant: lỗi trigger không block đăng ký;
 -- profile sẽ được tạo lại qua API route nếu trigger fail.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
@@ -120,8 +130,7 @@ BEGIN
             )
             ON CONFLICT (email) DO UPDATE SET id = EXCLUDED.id;
         EXCEPTION WHEN OTHERS THEN
-            -- Bỏ qua lỗi, profile sẽ được tạo qua API route
-            NULL;
+            NULL;  -- bỏ qua lỗi, profile sẽ được tạo qua API route
         END;
     END IF;
     RETURN NEW;
@@ -135,27 +144,27 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  3. CONTRIBUTIONS (đề xuất chỉnh sửa)                  ║
+-- ║  3. contributions (đề xuất chỉnh sửa)                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS contributions (
-    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    author_id    UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
-    author_email TEXT,
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    author_id     UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    author_email  TEXT,
     person_handle TEXT,
-    person_name  TEXT,
-    field_name   TEXT        NOT NULL,
-    field_label  TEXT,
-    old_value    TEXT,
-    new_value    TEXT        NOT NULL,
-    note         TEXT,
-    status       TEXT        NOT NULL DEFAULT 'pending'
-                             CHECK (status IN ('pending', 'approved', 'rejected')),
-    admin_note   TEXT,
-    reviewed_by  UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
-    reviewed_at  TIMESTAMPTZ,
-    applied_at   TIMESTAMPTZ,                                    -- null = chưa apply vào DB
-    created_at   TIMESTAMPTZ DEFAULT now(),
+    person_name   TEXT,
+    field_name    TEXT        NOT NULL,
+    field_label   TEXT,
+    old_value     TEXT,
+    new_value     TEXT        NOT NULL,
+    note          TEXT,
+    status        TEXT        NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending', 'approved', 'rejected')),
+    admin_note    TEXT,
+    reviewed_by   UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    reviewed_at   TIMESTAMPTZ,
+    applied_at    TIMESTAMPTZ,                               -- null = chưa apply vào DB
+    created_at    TIMESTAMPTZ DEFAULT now(),
     CONSTRAINT contributions_value_length CHECK (char_length(new_value) <= 5000)
 );
 
@@ -165,7 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_contributions_applied ON contributions (applied_a
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  4. COMMENTS (bình luận hồ sơ thành viên)              ║
+-- ║  4. comments (bình luận hồ sơ thành viên)              ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -183,7 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_comments_person ON comments (person_handle);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  5. NOTIFICATIONS (thông báo)                           ║
+-- ║  5. notifications (thông báo)                           ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -201,7 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  6. POSTS & POST_COMMENTS (bảng tin)                   ║
+-- ║  6. posts + post_comments (bảng tin)                   ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS posts (
@@ -237,7 +246,7 @@ CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments (post_id);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  7. EVENTS & EVENT_RSVPS (sự kiện gia đình)            ║
+-- ║  7. events + event_rsvps (sự kiện gia đình)            ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS events (
@@ -270,7 +279,7 @@ CREATE INDEX IF NOT EXISTS idx_event_rsvps_event ON event_rsvps (event_id);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  8. FAMILY_QUESTIONS (câu hỏi xác minh gia đình)       ║
+-- ║  8. family_questions (câu hỏi xác minh gia đình)       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS family_questions (
@@ -293,7 +302,7 @@ GRANT SELECT ON family_questions_public TO anon, authenticated;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  9. INVITE_LINKS (mã mời thành viên)                   ║
+-- ║  9. invite_links (mã mời thành viên)                   ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS invite_links (
@@ -312,170 +321,366 @@ CREATE INDEX IF NOT EXISTS idx_invite_links_code ON invite_links (code);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  10. ROW LEVEL SECURITY (RLS)                           ║
--- ╚══════════════════════════════════════════════════════════╝
-
--- ── people ───────────────────────────────────────────────────
-ALTER TABLE people ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read people"            ON people FOR SELECT USING (true);
-CREATE POLICY "authenticated can insert people"   ON people FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "authenticated can update people"   ON people FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "admin can delete people" ON people FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── families ─────────────────────────────────────────────────
-ALTER TABLE families ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read families"            ON families FOR SELECT USING (true);
-CREATE POLICY "authenticated can insert families"   ON families FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "authenticated can update families"   ON families FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "admin can delete families" ON families FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── profiles ─────────────────────────────────────────────────
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read profiles"         ON profiles FOR SELECT USING (true);
-CREATE POLICY "users can insert own profile"     ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "users or admin can update profile" ON profiles FOR UPDATE USING (
-    auth.uid() = id OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── contributions ────────────────────────────────────────────
-ALTER TABLE contributions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read contributions"            ON contributions FOR SELECT USING (true);
-CREATE POLICY "users can insert contributions"           ON contributions FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "admin or editor can update contributions" ON contributions FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
-);
-
--- ── comments ─────────────────────────────────────────────────
-ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read comments"          ON comments FOR SELECT USING (true);
-CREATE POLICY "users can insert comments"         ON comments FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "owner or admin can delete comments" ON comments FOR DELETE USING (
-    author_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── notifications ────────────────────────────────────────────
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "users read own notifications"          ON notifications FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "users update own notifications"        ON notifications FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "authenticated can insert notifications" ON notifications FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
--- ── posts ────────────────────────────────────────────────────
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read posts"                  ON posts FOR SELECT USING (status = 'published');
-CREATE POLICY "admin or editor can insert posts"       ON posts FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
-);
-CREATE POLICY "admin or editor can update posts"       ON posts FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
-);
-CREATE POLICY "admin or author can delete posts" ON posts FOR DELETE USING (
-    author_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── post_comments ────────────────────────────────────────────
-ALTER TABLE post_comments ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read post_comments"            ON post_comments FOR SELECT USING (true);
-CREATE POLICY "authenticated can insert post_comments"   ON post_comments FOR INSERT WITH CHECK (
-    auth.role() = 'authenticated' AND auth.uid() = author_id
-);
-CREATE POLICY "owner or admin can delete post_comments" ON post_comments FOR DELETE USING (
-    author_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── events ───────────────────────────────────────────────────
-ALTER TABLE events ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read events"                       ON events FOR SELECT USING (true);
-CREATE POLICY "admin or editor can insert events"            ON events FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
-);
-CREATE POLICY "admin or editor or creator can update events" ON events FOR UPDATE USING (
-    creator_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
-);
-CREATE POLICY "admin or creator can delete events" ON events FOR DELETE USING (
-    creator_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ── event_rsvps ──────────────────────────────────────────────
-ALTER TABLE event_rsvps ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "anyone can read event_rsvps"  ON event_rsvps FOR SELECT USING (true);
-CREATE POLICY "user can insert own rsvp"     ON event_rsvps FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "user can update own rsvp"     ON event_rsvps FOR UPDATE USING (auth.uid() = user_id);
-
--- ── family_questions ─────────────────────────────────────────
-ALTER TABLE family_questions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "admin full access on family_questions" ON family_questions
-    FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-
--- ── invite_links ─────────────────────────────────────────────
-ALTER TABLE invite_links ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "admin can manage invite_links"       ON invite_links
-    USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "authenticated can read invite_links" ON invite_links
-    FOR SELECT USING (auth.role() = 'authenticated');
-
-
--- ╔══════════════════════════════════════════════════════════╗
--- ║  11. AUDIT_LOGS (lịch sử hành động editor/admin)        ║
+-- ║  10. audit_logs (lịch sử hành động editor/admin)       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id     UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
-    action       TEXT        NOT NULL
-                             CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT')),
-    entity_type  TEXT        NOT NULL,  -- 'people' | 'families' | 'contribution' | 'profile' | ...
-    entity_id    TEXT,                  -- handle hoặc UUID của đối tượng
-    entity_name  TEXT,                  -- tên hiển thị (display_name, email, ...)
-    metadata     JSONB,                 -- chi tiết thay đổi (fields, old/new values, ...)
-    created_at   TIMESTAMPTZ DEFAULT now()
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id    UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    action      TEXT        NOT NULL
+                            CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT')),
+    entity_type TEXT        NOT NULL,   -- 'people' | 'families' | 'contribution' | 'profile' | ...
+    entity_id   TEXT,                   -- handle hoặc UUID của đối tượng
+    entity_name TEXT,                   -- tên hiển thị (display_name, email, ...)
+    metadata    JSONB,                  -- chi tiết thay đổi (fields, old/new values, ...)
+    created_at  TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor   ON audit_logs (actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity  ON audit_logs (entity_type, entity_id);
 
--- ── audit_logs RLS ───────────────────────────────────────────
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  11. app_settings (bật/tắt tính năng)                  ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         TEXT        PRIMARY KEY,
+    value       TEXT        NOT NULL,
+    description TEXT,
+    updated_by  UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS app_settings_updated_at ON app_settings;
+CREATE TRIGGER app_settings_updated_at
+    BEFORE UPDATE ON app_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  12. bug_reports (báo cáo lỗi từ thành viên)           ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS bug_reports (
+    id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    reporter_id        UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    category           TEXT        NOT NULL
+                                   CHECK (category IN (
+                                       'display_error', 'feature_not_working',
+                                       'wrong_information', 'loading_error',
+                                       'suggestion', 'other'
+                                   )),
+    title              TEXT        NOT NULL,
+    description        TEXT        NOT NULL,
+    steps_to_reproduce TEXT,
+    status             TEXT        NOT NULL DEFAULT 'open'
+                                   CHECK (status IN ('open', 'in_progress', 'resolved')),
+    admin_note         TEXT,
+    created_at         TIMESTAMPTZ DEFAULT now(),
+    updated_at         TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bug_reports_reporter ON bug_reports (reporter_id);
+CREATE INDEX IF NOT EXISTS idx_bug_reports_status   ON bug_reports (status);
+CREATE INDEX IF NOT EXISTS idx_bug_reports_created  ON bug_reports (created_at DESC);
+
+DROP TRIGGER IF EXISTS trg_bug_reports_updated_at ON bug_reports;
+CREATE TRIGGER trg_bug_reports_updated_at
+    BEFORE UPDATE ON bug_reports
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  13. media (thư viện hình ảnh & tài liệu)              ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE TABLE IF NOT EXISTS media (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name     TEXT        NOT NULL,
+    mime_type     TEXT,
+    file_size     BIGINT,
+    title         TEXT,
+    description   TEXT,
+    state         TEXT        NOT NULL DEFAULT 'PENDING'
+                              CHECK (state IN ('PENDING', 'PUBLISHED', 'REJECTED')),
+    -- FK → profiles (public schema) để PostgREST resolve join media→profiles
+    uploader_id   UUID        REFERENCES profiles(id) ON DELETE SET NULL,
+    storage_path  TEXT,
+    storage_url   TEXT,
+    thumbnail_url TEXT,
+    linked_person TEXT,
+    media_type    TEXT        NOT NULL DEFAULT 'IMAGE'
+                              CHECK (media_type IN ('IMAGE', 'DOCUMENT')),
+    created_at    TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_linked_person ON media (linked_person);
+CREATE INDEX IF NOT EXISTS idx_media_state         ON media (state);
+CREATE INDEX IF NOT EXISTS idx_media_uploader      ON media (uploader_id);
+CREATE INDEX IF NOT EXISTS idx_media_created       ON media (created_at DESC);
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  14. ROW LEVEL SECURITY                                 ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- ── people ───────────────────────────────────────────────────
+ALTER TABLE people ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read people"
+    ON people FOR SELECT USING (true);
+CREATE POLICY "authenticated can insert people"
+    ON people FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "authenticated can update people"
+    ON people FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY "admin can delete people"
+    ON people FOR DELETE USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── families ─────────────────────────────────────────────────
+ALTER TABLE families ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read families"
+    ON families FOR SELECT USING (true);
+CREATE POLICY "authenticated can insert families"
+    ON families FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "authenticated can update families"
+    ON families FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY "admin can delete families"
+    ON families FOR DELETE USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── profiles ─────────────────────────────────────────────────
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read profiles"
+    ON profiles FOR SELECT USING (true);
+CREATE POLICY "users can insert own profile"
+    ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "users or admin can update profile"
+    ON profiles FOR UPDATE USING (
+        auth.uid() = id OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── contributions ────────────────────────────────────────────
+ALTER TABLE contributions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read contributions"
+    ON contributions FOR SELECT USING (true);
+CREATE POLICY "users can insert contributions"
+    ON contributions FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "admin or editor can update contributions"
+    ON contributions FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+
+-- ── comments ─────────────────────────────────────────────────
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read comments"
+    ON comments FOR SELECT USING (true);
+CREATE POLICY "users can insert comments"
+    ON comments FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "owner or admin can delete comments"
+    ON comments FOR DELETE USING (
+        author_id = auth.uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── notifications ────────────────────────────────────────────
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users read own notifications"
+    ON notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users update own notifications"
+    ON notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "authenticated can insert notifications"
+    ON notifications FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- ── posts ────────────────────────────────────────────────────
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read posts"
+    ON posts FOR SELECT USING (status = 'published');
+CREATE POLICY "admin or editor can insert posts"
+    ON posts FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "admin or editor can update posts"
+    ON posts FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "admin or author can delete posts"
+    ON posts FOR DELETE USING (
+        author_id = auth.uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── post_comments ────────────────────────────────────────────
+ALTER TABLE post_comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read post_comments"
+    ON post_comments FOR SELECT USING (true);
+CREATE POLICY "authenticated can insert post_comments"
+    ON post_comments FOR INSERT WITH CHECK (
+        auth.role() = 'authenticated' AND auth.uid() = author_id
+    );
+CREATE POLICY "owner or admin can delete post_comments"
+    ON post_comments FOR DELETE USING (
+        author_id = auth.uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── events ───────────────────────────────────────────────────
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read events"
+    ON events FOR SELECT USING (true);
+CREATE POLICY "admin or editor can insert events"
+    ON events FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "admin or editor or creator can update events"
+    ON events FOR UPDATE USING (
+        creator_id = auth.uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "admin or creator can delete events"
+    ON events FOR DELETE USING (
+        creator_id = auth.uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── event_rsvps ──────────────────────────────────────────────
+ALTER TABLE event_rsvps ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anyone can read event_rsvps"
+    ON event_rsvps FOR SELECT USING (true);
+CREATE POLICY "user can insert own rsvp"
+    ON event_rsvps FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "user can update own rsvp"
+    ON event_rsvps FOR UPDATE USING (auth.uid() = user_id);
+
+-- ── family_questions ─────────────────────────────────────────
+ALTER TABLE family_questions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "admin full access on family_questions"
+    ON family_questions FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── invite_links ─────────────────────────────────────────────
+ALTER TABLE invite_links ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "admin can manage invite_links"
+    ON invite_links USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+CREATE POLICY "authenticated can read invite_links"
+    ON invite_links FOR SELECT USING (auth.role() = 'authenticated');
+
+-- ── audit_logs ───────────────────────────────────────────────
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Chỉ admin được đọc log
 CREATE POLICY "admin can read audit_logs"
-    ON audit_logs FOR SELECT
-    USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-
--- Editor/admin được ghi log
+    ON audit_logs FOR SELECT USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+-- Editor/admin được ghi log từ client
 CREATE POLICY "editor or admin can insert audit_logs"
-    ON audit_logs FOR INSERT
-    WITH CHECK (
+    ON audit_logs FOR INSERT WITH CHECK (
         auth.role() = 'authenticated' AND
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
     );
-
--- Service role (API routes) cũng được ghi log
+-- Service role (API routes dùng service key) được ghi log
 CREATE POLICY "service role can insert audit_logs"
-    ON audit_logs FOR INSERT
-    WITH CHECK (auth.role() = 'service_role');
+    ON audit_logs FOR INSERT WITH CHECK (auth.role() = 'service_role');
+
+-- ── app_settings ─────────────────────────────────────────────
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+-- Mọi user đăng nhập đều đọc được (sidebar cần đọc)
+CREATE POLICY "authenticated can read app_settings"
+    ON app_settings FOR SELECT USING (auth.role() = 'authenticated');
+-- Chỉ admin được ghi
+CREATE POLICY "admin can manage app_settings"
+    ON app_settings FOR ALL
+    USING     (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
+    WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- ── bug_reports ──────────────────────────────────────────────
+ALTER TABLE bug_reports ENABLE ROW LEVEL SECURITY;
+
+-- Admin thấy toàn bộ
+CREATE POLICY "admin can read all bug_reports"
+    ON bug_reports FOR SELECT USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+-- Member chỉ thấy bug của chính mình
+CREATE POLICY "member can read own bug_reports"
+    ON bug_reports FOR SELECT USING (reporter_id = auth.uid());
+-- Mọi user đã đăng nhập được tạo bug report
+CREATE POLICY "authenticated can insert bug_reports"
+    ON bug_reports FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Chỉ admin được cập nhật status / admin_note
+CREATE POLICY "admin can update bug_reports"
+    ON bug_reports FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── media ────────────────────────────────────────────────────
+ALTER TABLE media ENABLE ROW LEVEL SECURITY;
+
+-- Member thấy PUBLISHED + ảnh của mình
+CREATE POLICY "authenticated can read media"
+    ON media FOR SELECT USING (
+        auth.role() = 'authenticated'
+        AND (state = 'PUBLISHED' OR auth.uid() = uploader_id)
+    );
+-- Admin/editor thấy tất cả
+CREATE POLICY "admin or editor can read all media"
+    ON media FOR SELECT USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "authenticated can insert media"
+    ON media FOR INSERT WITH CHECK (
+        auth.role() = 'authenticated' AND auth.uid() = uploader_id
+    );
+CREATE POLICY "admin or editor or owner can update media"
+    ON media FOR UPDATE USING (
+        auth.uid() = uploader_id OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'editor'))
+    );
+CREATE POLICY "admin or owner can delete media"
+    ON media FOR DELETE USING (
+        auth.uid() = uploader_id OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- ── storage.objects (Supabase Storage bucket: media) ─────────
+CREATE POLICY "authenticated can upload to media bucket"
+    ON storage.objects FOR INSERT
+    WITH CHECK (bucket_id = 'media' AND auth.role() = 'authenticated');
+
+CREATE POLICY "public can view media bucket"
+    ON storage.objects FOR SELECT
+    USING (bucket_id = 'media');
+
+CREATE POLICY "uploader or admin can delete from media bucket"
+    ON storage.objects FOR DELETE
+    USING (
+        bucket_id = 'media'
+        AND (
+            auth.uid()::text = (storage.foldername(name))[1]
+            OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+        )
+    );
 
 
 -- ============================================================

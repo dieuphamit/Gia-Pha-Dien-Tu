@@ -72,7 +72,7 @@ export default function BackupPage() {
             <BackupSection />
 
             {/* Restore */}
-            <RestoreSection userId={user?.id} accessToken={null} />
+            <RestoreSection userId={user?.id} />
         </div>
     );
 }
@@ -217,7 +217,7 @@ interface RestoreState {
     confirmed: boolean;
 }
 
-function RestoreSection({ userId }: { userId?: string; accessToken: string | null }) {
+function RestoreSection({ userId }: { userId?: string }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const [state, setState] = useState<RestoreState>({
         preview: null,
