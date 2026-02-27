@@ -16,7 +16,9 @@ export interface TreeNode {
     gender: number;
     generation: number;
     birthYear?: number;
+    birthDate?: string; // ISO DATE: "YYYY-MM-DD"
     deathYear?: number;
+    deathDate?: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     isPrivacyFiltered: boolean;
     isPatrilineal: boolean;

@@ -35,8 +35,8 @@ interface EditForm {
     surname: string;
     firstName: string;
     nickName: string;
-    birthYear: string;
-    deathYear: string;
+    birthDate: string; // ISO DATE: "YYYY-MM-DD"
+    deathDate: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     phone: string;
     email: string;
@@ -72,7 +72,7 @@ export default function PersonProfilePage() {
     const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, surname: '', firstName: '', nickName: '',
-        birthYear: '', deathYear: '', isLiving: true,
+        birthDate: '', deathDate: '', isLiving: true,
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
         occupation: '', company: '', education: '',
@@ -94,7 +94,9 @@ export default function PersonProfilePage() {
                     displayName: row.display_name as string,
                     gender: row.gender as number,
                     birthYear: row.birth_year as number | undefined,
+                    birthDate: row.birth_date as string | undefined,
                     deathYear: row.death_year as number | undefined,
+                    deathDate: row.death_date as string | undefined,
                     generation: row.generation as number,
                     isLiving: row.is_living as boolean,
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
@@ -152,8 +154,8 @@ export default function PersonProfilePage() {
             surname: person.surname || '',
             firstName: person.firstName || '',
             nickName: person.nickName || '',
-            birthYear: person.birthYear ? String(person.birthYear) : '',
-            deathYear: person.deathYear ? String(person.deathYear) : '',
+            birthDate: person.birthDate || '',
+            deathDate: person.deathDate || '',
             isLiving: person.isLiving,
             phone: person.phone || '',
             email: person.email || '',
@@ -235,8 +237,8 @@ export default function PersonProfilePage() {
             surname: form.surname || null,
             firstName: form.firstName || null,
             nickName: form.nickName || null,
-            birthYear: form.birthYear ? Number(form.birthYear) : null,
-            deathYear: form.deathYear ? Number(form.deathYear) : null,
+            birthDate: form.birthDate || null,
+            deathDate: form.deathDate || null,
             isLiving: form.isLiving,
             phone: form.phone || null,
             email: form.email || null,
@@ -511,12 +513,12 @@ export default function PersonProfilePage() {
                                 </select>
                             </div>
                             <div>
-                                <label className="text-sm font-medium leading-none">Năm sinh</label>
-                                <Input type="number" value={form.birthYear} onChange={set('birthYear')} placeholder="1950" />
+                                <label className="text-sm font-medium leading-none">Ngày sinh</label>
+                                <Input type="date" value={form.birthDate} onChange={set('birthDate')} max={new Date().toISOString().split('T')[0]} />
                             </div>
                             <div>
-                                <label className="text-sm font-medium leading-none">Năm mất</label>
-                                <Input type="number" value={form.deathYear} onChange={set('deathYear')} placeholder="Để trống nếu còn sống" />
+                                <label className="text-sm font-medium leading-none">Ngày mất</label>
+                                <Input type="date" value={form.deathDate} onChange={set('deathDate')} max={new Date().toISOString().split('T')[0]} />
                             </div>
                             <div>
                                 <label className="text-sm font-medium leading-none">Trạng thái</label>
@@ -818,12 +820,12 @@ export default function PersonProfilePage() {
                                 <InfoRow label="Tên" value={person.firstName || '—'} />
                                 <InfoRow label="Giới tính" value={genderLabel} />
                                 {person.nickName && <InfoRow label="Tên thường gọi" value={person.nickName} />}
-                                <InfoRow label="Ngày sinh" value={person.birthDate || (person.birthYear ? `${person.birthYear}` : '—')} />
-                                {person.birthYear && <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthYear) || '—'} />}
+                                <InfoRow label="Ngày sinh" value={person.birthDate ? new Date(person.birthDate).toLocaleDateString('vi-VN') : (person.birthYear ? `${person.birthYear}` : '—')} />
+                                {(person.birthDate || person.birthYear) && <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthDate ? new Date(person.birthDate).getFullYear() : person.birthYear) || '—'} />}
                                 <InfoRow label="Nơi sinh" value={person.birthPlace || '—'} />
                                 {!person.isLiving && (
                                     <>
-                                        <InfoRow label="Ngày mất" value={person.deathDate || (person.deathYear ? `${person.deathYear}` : '—')} />
+                                        <InfoRow label="Ngày mất" value={person.deathDate ? new Date(person.deathDate).toLocaleDateString('vi-VN') : (person.deathYear ? `${person.deathYear}` : '—')} />
                                         <InfoRow label="Nơi mất" value={person.deathPlace || '—'} />
                                     </>
                                 )}

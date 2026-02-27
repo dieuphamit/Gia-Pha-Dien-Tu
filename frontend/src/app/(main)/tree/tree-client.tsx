@@ -1577,21 +1577,50 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
         : [];
 
     // All families (for "change parent" dropdown) with labels
-    const allParentFamilies = treeData.families.filter(f => f.fatherHandle || f.motherHandle);
+    const allParentFamilies = treeData.families.filter(f => (f.fatherHandle || f.motherHandle) && f.children.length > 0);
     const parentFamiliesWithLabels = allParentFamilies.map(f => {
         const father = treeData.people.find(p => p.handle === f.fatherHandle);
-        const gen = father ? (father as any).generation : '';
-        const label = father ? father.displayName : f.handle;
+        const mother = treeData.people.find(p => p.handle === f.motherHandle);
+        const gen = father ? (father as any).generation : (mother ? (mother as any).generation : '');
+        const fatherName = father?.displayName;
+        const motherName = mother?.displayName;
+        let label: string;
+        if (fatherName && motherName) {
+            label = `${fatherName} & ${motherName}`;
+        } else if (fatherName) {
+            label = fatherName;
+        } else if (motherName) {
+            label = motherName;
+        } else {
+            label = f.handle;
+        }
         return { ...f, label, gen };
+    });
+
+    // For families sharing the same label, append first child's name to disambiguate
+    const labelCounts = new Map<string, number>();
+    parentFamiliesWithLabels.forEach(f => {
+        labelCounts.set(f.label, (labelCounts.get(f.label) ?? 0) + 1);
+    });
+    const disambiguatedFamilies = parentFamiliesWithLabels.map(f => {
+        if ((labelCounts.get(f.label) ?? 0) > 1) {
+            if (f.children.length > 0) {
+                const firstChild = treeData.people.find(p => p.handle === f.children[0]);
+                const childName = firstChild?.displayName ?? f.children[0];
+                return { ...f, label: `${f.label} (con: ${childName})` };
+            }
+            return { ...f, label: `${f.label} (${f.handle})` };
+        }
+        return f;
     });
 
     // Filter parent families by search term
     const filteredParentFamilies = parentSearch.trim()
-        ? parentFamiliesWithLabels.filter(f =>
+        ? disambiguatedFamilies.filter(f =>
             f.label.toLowerCase().includes(parentSearch.toLowerCase()) ||
             f.handle.toLowerCase().includes(parentSearch.toLowerCase())
         )
-        : parentFamiliesWithLabels;
+        : disambiguatedFamilies;
 
     const handleSave = async () => {
         if (!person || !dirty) return;

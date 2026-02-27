@@ -26,13 +26,19 @@ interface Person {
     displayName: string;
     gender: number;
     generation: number;
-    birthYear?: number;
-    deathYear?: number;
+    birthDate?: string; // ISO DATE: "YYYY-MM-DD"
+    deathDate?: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     isPrivacyFiltered: boolean;
 }
 
-type SortKey = 'displayName' | 'gender' | 'generation' | 'birthYear' | 'deathYear' | 'isLiving';
+type SortKey = 'displayName' | 'gender' | 'generation' | 'birthDate' | 'deathDate' | 'isLiving';
+
+function fmtDate(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 type SortDir = 'asc' | 'desc';
 
 // ── SortableHeader component ───────────────────────────────────
@@ -91,8 +97,8 @@ export default function PeopleListPage() {
     const [livingFilter, setLivingFilter] = useState<boolean | null>(null);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-    // Default sort: năm sinh tăng dần
-    const [sortKey, setSortKey] = useState<SortKey>('birthYear');
+    // Default sort: ngày sinh tăng dần
+    const [sortKey, setSortKey] = useState<SortKey>('birthDate');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
 
     // ── Fetch ──
@@ -102,15 +108,15 @@ export default function PeopleListPage() {
             const { supabase } = await import('@/lib/supabase');
             const { data, error } = await supabase
                 .from('people')
-                .select('handle, display_name, gender, generation, birth_year, death_year, is_living, is_privacy_filtered');
+                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered');
             if (!error && data) {
                 setPeople(data.map((row: Record<string, unknown>) => ({
                     handle: row.handle as string,
                     displayName: row.display_name as string,
                     gender: row.gender as number,
                     generation: row.generation as number,
-                    birthYear: row.birth_year as number | undefined,
-                    deathYear: row.death_year as number | undefined,
+                    birthDate: row.birth_date as string | undefined,
+                    deathDate: row.death_date as string | undefined,
                     isLiving: row.is_living as boolean,
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
                 })));
@@ -157,14 +163,14 @@ export default function PeopleListPage() {
                     valA = a.generation;
                     valB = b.generation;
                     break;
-                case 'birthYear':
-                    // Người không có năm sinh xếp cuối
-                    valA = a.birthYear ?? (sortDir === 'asc' ? Infinity : -Infinity);
-                    valB = b.birthYear ?? (sortDir === 'asc' ? Infinity : -Infinity);
+                case 'birthDate':
+                    // Người không có ngày sinh xếp cuối (ISO string sorts lexicographically)
+                    valA = a.birthDate ?? (sortDir === 'asc' ? '\uFFFF' : '');
+                    valB = b.birthDate ?? (sortDir === 'asc' ? '\uFFFF' : '');
                     break;
-                case 'deathYear':
-                    valA = a.deathYear ?? (sortDir === 'asc' ? Infinity : -Infinity);
-                    valB = b.deathYear ?? (sortDir === 'asc' ? Infinity : -Infinity);
+                case 'deathDate':
+                    valA = a.deathDate ?? (sortDir === 'asc' ? '\uFFFF' : '');
+                    valB = b.deathDate ?? (sortDir === 'asc' ? '\uFFFF' : '');
                     break;
                 case 'isLiving':
                     valA = a.isLiving ? 0 : 1;
@@ -173,10 +179,10 @@ export default function PeopleListPage() {
             }
 
             if (valA === valB) {
-                // Secondary sort: năm sinh tăng dần
-                const ay = a.birthYear ?? Infinity;
-                const by = b.birthYear ?? Infinity;
-                return ay - by;
+                // Secondary sort: ngày sinh tăng dần
+                const ay = a.birthDate ?? '\uFFFF';
+                const by = b.birthDate ?? '\uFFFF';
+                return ay < by ? -1 : ay > by ? 1 : 0;
             }
 
             if (typeof valA === 'string' && typeof valB === 'string') {
@@ -255,8 +261,8 @@ export default function PeopleListPage() {
                         {sortKey === 'displayName' ? 'Họ tên'
                             : sortKey === 'gender' ? 'Giới tính'
                                 : sortKey === 'generation' ? 'Đời'
-                                    : sortKey === 'birthYear' ? 'Năm sinh'
-                                        : sortKey === 'deathYear' ? 'Năm mất'
+                                    : sortKey === 'birthDate' ? 'Ngày sinh'
+                                        : sortKey === 'deathDate' ? 'Ngày mất'
                                             : 'Trạng thái'}
                     </span>
                 </div>
@@ -276,8 +282,8 @@ export default function PeopleListPage() {
                                     <SortableHead label="Họ tên" sortKey="displayName" {...sortProps} />
                                     <SortableHead label="Giới tính" sortKey="gender"      {...sortProps} />
                                     <SortableHead label="Đời" sortKey="generation"  {...sortProps} />
-                                    <SortableHead label="Năm sinh" sortKey="birthYear"   {...sortProps} />
-                                    <SortableHead label="Năm mất" sortKey="deathYear"   {...sortProps} />
+                                    <SortableHead label="Ngày sinh" sortKey="birthDate"  {...sortProps} />
+                                    <SortableHead label="Ngày mất" sortKey="deathDate"  {...sortProps} />
                                     <SortableHead label="Trạng thái" sortKey="isLiving"   {...sortProps} />
                                 </TableRow>
                             </TableHeader>
@@ -300,12 +306,12 @@ export default function PeopleListPage() {
                                         <TableCell>
                                             <span className="text-sm text-muted-foreground">Đ{p.generation}</span>
                                         </TableCell>
-                                        <TableCell className="tabular-nums">
-                                            {p.birthYear || <span className="text-muted-foreground">—</span>}
+                                        <TableCell className="tabular-nums text-sm">
+                                            {fmtDate(p.birthDate) || <span className="text-muted-foreground">—</span>}
                                         </TableCell>
-                                        <TableCell className="tabular-nums">
-                                            {p.deathYear
-                                                ? p.deathYear
+                                        <TableCell className="tabular-nums text-sm">
+                                            {p.deathDate
+                                                ? fmtDate(p.deathDate)
                                                 : p.isLiving
                                                     ? <span className="text-muted-foreground">—</span>
                                                     : <span className="text-muted-foreground">?</span>

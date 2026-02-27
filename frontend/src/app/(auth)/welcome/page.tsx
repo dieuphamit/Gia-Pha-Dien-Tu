@@ -71,7 +71,7 @@ export default function WelcomePage() {
                         <Button
                             className="w-full"
                             size="lg"
-                            onClick={() => router.push('/verify-family')}
+                            onClick={() => router.push('/register')}
                         >
                             <UserPlus className="h-4 w-4 mr-2" />
                             Đăng ký tham gia dòng họ
@@ -87,8 +87,7 @@ export default function WelcomePage() {
                     </div>
 
                     <p className="text-center text-xs text-muted-foreground">
-                        Để đăng ký, bạn cần xác minh là thành viên gia tộc bằng cách trả lời
-                        một số câu hỏi về gia đình.
+                        Đăng ký tài khoản để truy cập gia phả họ Phạm.
                     </p>
                 </CardContent>
             </Card>

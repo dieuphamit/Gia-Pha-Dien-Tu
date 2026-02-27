@@ -42,10 +42,10 @@ CREATE TABLE IF NOT EXISTS people (
     generation           INT          DEFAULT 1,
     chi                  INT,
     birth_year           INT,
-    birth_date           TEXT,
+    birth_date           DATE,
     birth_place          TEXT,
     death_year           INT,
-    death_date           TEXT,
+    death_date           DATE,
     death_place          TEXT,
     is_living            BOOLEAN      DEFAULT true,
     is_privacy_filtered  BOOLEAN      DEFAULT false,
@@ -77,8 +77,11 @@ CREATE TABLE IF NOT EXISTS families (
     updated_at     TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_people_generation ON people (generation);
-CREATE INDEX IF NOT EXISTS idx_people_surname    ON people (surname);
+CREATE INDEX IF NOT EXISTS idx_people_generation   ON people (generation);
+CREATE INDEX IF NOT EXISTS idx_people_surname      ON people (surname);
+CREATE INDEX IF NOT EXISTS idx_people_birth_month_day
+    ON people (EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date))
+    WHERE birth_date IS NOT NULL AND is_living = true;
 CREATE INDEX IF NOT EXISTS idx_families_father   ON families (father_handle);
 CREATE INDEX IF NOT EXISTS idx_families_mother   ON families (mother_handle);
 

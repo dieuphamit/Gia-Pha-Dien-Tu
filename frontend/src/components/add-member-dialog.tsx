@@ -49,8 +49,8 @@ interface FormData {
     displayName: string;
     gender: number;
     generation: number;
-    birthYear: string;
-    deathYear: string;
+    birthDate: string; // ISO DATE: "YYYY-MM-DD"
+    deathDate: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     occupation: string;
     currentAddress: string;
@@ -62,8 +62,8 @@ const INITIAL_FORM: FormData = {
     displayName: '',
     gender: 1,
     generation: 3,
-    birthYear: '',
-    deathYear: '',
+    birthDate: '',
+    deathDate: '',
     isLiving: true,
     occupation: '',
     currentAddress: '',
@@ -166,32 +166,28 @@ function StepInfo({
                 </div>
             </div>
 
-            {/* Năm sinh / mất */}
+            {/* Ngày sinh / mất */}
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Năm sinh</label>
+                    <label className="text-sm font-medium">Ngày sinh</label>
                     <Input
-                        id="member-birth-year"
-                        type="number"
-                        placeholder="Vd: 1990"
-                        min={1800}
-                        max={new Date().getFullYear()}
-                        value={form.birthYear}
-                        onChange={e => onChange({ birthYear: e.target.value })}
+                        id="member-birth-date"
+                        type="date"
+                        value={form.birthDate}
+                        max={new Date().toISOString().split('T')[0]}
+                        onChange={e => onChange({ birthDate: e.target.value })}
                     />
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Năm mất</label>
+                    <label className="text-sm font-medium">Ngày mất</label>
                     <Input
-                        id="member-death-year"
-                        type="number"
-                        placeholder="Để trống nếu còn sống"
-                        min={1800}
-                        max={new Date().getFullYear()}
-                        value={form.deathYear}
+                        id="member-death-date"
+                        type="date"
+                        value={form.deathDate}
+                        max={new Date().toISOString().split('T')[0]}
                         onChange={e => {
                             const val = e.target.value;
-                            onChange({ deathYear: val, isLiving: !val });
+                            onChange({ deathDate: val, isLiving: !val });
                         }}
                     />
                 </div>
@@ -699,8 +695,8 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             displayName: form.displayName.trim(),
             gender: form.gender,
             generation: form.generation,
-            birthYear: form.birthYear ? parseInt(form.birthYear) : null,
-            deathYear: form.deathYear ? parseInt(form.deathYear) : null,
+            birthDate: form.birthDate || null,
+            deathDate: form.deathDate || null,
             isLiving: form.isLiving,
             families: [],
             parentFamilies: [],

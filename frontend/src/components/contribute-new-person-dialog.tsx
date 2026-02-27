@@ -18,8 +18,8 @@ interface NewPersonPayload {
     displayName: string;
     gender: number;
     generation: number;
-    birthYear?: number;
-    deathYear?: number;
+    birthDate?: string; // ISO DATE: "YYYY-MM-DD"
+    deathDate?: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     occupation?: string;
     currentAddress?: string;
@@ -41,8 +41,8 @@ export function ContributeNewPersonDialog() {
     const [displayName, setDisplayName] = useState('');
     const [gender, setGender] = useState(1);
     const [generation, setGeneration] = useState<number | ''>('');
-    const [birthYear, setBirthYear] = useState('');
-    const [deathYear, setDeathYear] = useState('');
+    const [birthDate, setBirthDate] = useState('');
+    const [deathDate, setDeathDate] = useState('');
     const [isLiving, setIsLiving] = useState(true);
     const [occupation, setOccupation] = useState('');
     const [address, setAddress] = useState('');
@@ -64,7 +64,7 @@ export function ContributeNewPersonDialog() {
 
     const reset = () => {
         setDisplayName(''); setGender(1); setGeneration('');
-        setBirthYear(''); setDeathYear(''); setIsLiving(true);
+        setBirthDate(''); setDeathDate(''); setIsLiving(true);
         setOccupation(''); setAddress(''); setPhone('');
         setEmail(''); setRelationHint(''); setError(''); setSent(false);
         setParentFamilyHandle(''); setChildrenHandles([]); setSpouseHandle('');
@@ -83,8 +83,8 @@ export function ContributeNewPersonDialog() {
             displayName: displayName.trim(),
             gender,
             generation: Number(generation),
-            birthYear: birthYear ? Number(birthYear) : undefined,
-            deathYear: deathYear ? Number(deathYear) : undefined,
+            birthDate: birthDate || undefined,
+            deathDate: deathDate || undefined,
             isLiving,
             occupation: occupation.trim() || undefined,
             currentAddress: address.trim() || undefined,
@@ -186,21 +186,21 @@ export function ContributeNewPersonDialog() {
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground">Năm sinh</label>
+                                <label className="text-xs font-medium text-muted-foreground">Ngày sinh</label>
                                 <Input
-                                    type="number"
-                                    placeholder="VD: 1980"
-                                    value={birthYear}
-                                    onChange={e => setBirthYear(e.target.value)}
+                                    type="date"
+                                    value={birthDate}
+                                    onChange={e => setBirthDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground">Năm mất</label>
+                                <label className="text-xs font-medium text-muted-foreground">Ngày mất</label>
                                 <Input
-                                    type="number"
-                                    placeholder="(nếu đã mất)"
-                                    value={deathYear}
-                                    onChange={e => setDeathYear(e.target.value)}
+                                    type="date"
+                                    value={deathDate}
+                                    onChange={e => setDeathDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
                                 />
                             </div>
                         </div>

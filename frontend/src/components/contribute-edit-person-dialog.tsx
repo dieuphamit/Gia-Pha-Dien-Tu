@@ -19,7 +19,7 @@ import type { PersonDetail } from '@/lib/genealogy-types';
 interface FieldDef {
     label: string;
     dbColumn: string;
-    type: 'text' | 'email' | 'number' | 'textarea' | 'boolean';
+    type: 'text' | 'email' | 'number' | 'date' | 'textarea' | 'boolean';
     getValue: (p: PersonDetail) => string;
 }
 
@@ -28,8 +28,8 @@ const EDITABLE_FIELDS: FieldDef[] = [
     { label: 'Họ',              dbColumn: 'surname',         type: 'text',     getValue: p => p.surname || '' },
     { label: 'Tên',             dbColumn: 'first_name',      type: 'text',     getValue: p => p.firstName || '' },
     { label: 'Biệt danh',       dbColumn: 'nick_name',       type: 'text',     getValue: p => p.nickName || '' },
-    { label: 'Năm sinh',        dbColumn: 'birth_year',      type: 'number',   getValue: p => p.birthYear ? String(p.birthYear) : '' },
-    { label: 'Năm mất',         dbColumn: 'death_year',      type: 'number',   getValue: p => p.deathYear ? String(p.deathYear) : '' },
+    { label: 'Ngày sinh',        dbColumn: 'birth_date',      type: 'date',     getValue: p => p.birthDate || '' },
+    { label: 'Ngày mất',         dbColumn: 'death_date',      type: 'date',     getValue: p => p.deathDate || '' },
     { label: 'Còn sống',        dbColumn: 'is_living',       type: 'boolean',  getValue: p => p.isLiving ? 'true' : 'false' },
     { label: 'Nghề nghiệp',     dbColumn: 'occupation',      type: 'text',     getValue: p => p.occupation || '' },
     { label: 'Công ty',         dbColumn: 'company',         type: 'text',     getValue: p => p.company || '' },

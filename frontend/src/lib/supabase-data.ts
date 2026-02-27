@@ -54,12 +54,16 @@ export async function insertAuditLog(params: {
 // 笏笏 Convert snake_case DB rows to camelCase 笏笏
 
 function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
+    const birthDate = row.birth_date as string | undefined;
+    const deathDate = row.death_date as string | undefined;
     return {
         handle: row.handle as string,
         displayName: row.display_name as string,
         gender: row.gender as number,
         birthYear: row.birth_year as number | undefined,
+        birthDate: birthDate ?? undefined,
         deathYear: row.death_year as number | undefined,
+        deathDate: deathDate ?? undefined,
         generation: row.generation as number,
         isLiving: row.is_living as boolean,
         isPrivacyFiltered: row.is_privacy_filtered as boolean,
@@ -84,7 +88,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(): Promise<TreeNode[]> {
     const { data, error } = await supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, death_year, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families')
         .order('generation')
         .order('handle');
 
@@ -251,33 +255,32 @@ export async function updatePersonLiving(
     if (error) console.error('Failed to update person living status:', error.message);
 }
 
-/** Update a person's editable fields */
-export async function updatePerson(
-    handle: string,
-    fields: {
-        displayName?: string;
-        gender?: number;
-        surname?: string | null;
-        firstName?: string | null;
-        nickName?: string | null;
-        birthYear?: number | null;
-        deathYear?: number | null;
-        isLiving?: boolean;
-        phone?: string | null;
-        email?: string | null;
-        zalo?: string | null;
-        facebook?: string | null;
-        currentAddress?: string | null;
-        hometown?: string | null;
-        occupation?: string | null;
-        company?: string | null;
-        education?: string | null;
-        notes?: string | null;
-        biography?: string | null;
-    },
-    actorId?: string
-): Promise<{ error: string | null }> {
-    // Convert camelCase 竊・snake_case for DB
+type PersonUpdateFields = {
+    displayName?: string;
+    gender?: number;
+    surname?: string | null;
+    firstName?: string | null;
+    nickName?: string | null;
+    birthYear?: number | null;
+    birthDate?: string | null; // ISO DATE: "YYYY-MM-DD"
+    deathYear?: number | null;
+    deathDate?: string | null; // ISO DATE: "YYYY-MM-DD"
+    isLiving?: boolean;
+    phone?: string | null;
+    email?: string | null;
+    zalo?: string | null;
+    facebook?: string | null;
+    currentAddress?: string | null;
+    hometown?: string | null;
+    occupation?: string | null;
+    company?: string | null;
+    education?: string | null;
+    notes?: string | null;
+    biography?: string | null;
+};
+
+/** Chuyển camelCase fields → snake_case DB columns. Exported for testing. */
+export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, unknown> {
     const dbFields: Record<string, unknown> = {};
     if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
     if (fields.gender !== undefined) dbFields.gender = fields.gender;
@@ -285,7 +288,20 @@ export async function updatePerson(
     if (fields.firstName !== undefined) dbFields.first_name = fields.firstName;
     if (fields.nickName !== undefined) dbFields.nick_name = fields.nickName;
     if (fields.birthYear !== undefined) dbFields.birth_year = fields.birthYear;
+    if (fields.birthDate !== undefined) {
+        dbFields.birth_date = fields.birthDate;
+        // Sync birth_year từ birthDate để giữ backward compat
+        if (fields.birthDate) {
+            dbFields.birth_year = new Date(fields.birthDate).getFullYear();
+        }
+    }
     if (fields.deathYear !== undefined) dbFields.death_year = fields.deathYear;
+    if (fields.deathDate !== undefined) {
+        dbFields.death_date = fields.deathDate;
+        if (fields.deathDate) {
+            dbFields.death_year = new Date(fields.deathDate).getFullYear();
+        }
+    }
     if (fields.isLiving !== undefined) dbFields.is_living = fields.isLiving;
     if (fields.phone !== undefined) dbFields.phone = fields.phone;
     if (fields.email !== undefined) dbFields.email = fields.email;
@@ -298,6 +314,16 @@ export async function updatePerson(
     if (fields.education !== undefined) dbFields.education = fields.education;
     if (fields.notes !== undefined) dbFields.notes = fields.notes;
     if (fields.biography !== undefined) dbFields.biography = fields.biography;
+    return dbFields;
+}
+
+/** Update a person's editable fields */
+export async function updatePerson(
+    handle: string,
+    fields: PersonUpdateFields,
+    actorId?: string
+): Promise<{ error: string | null }> {
+    const dbFields = buildPersonDbFields(fields);
 
     console.log('[updatePerson] handle:', handle, 'fields:', JSON.stringify(dbFields));
 
@@ -338,12 +364,14 @@ export async function addPerson(person: {
     displayName: string;
     gender: number;
     generation: number;
-    birthYear?: number | null;
-    deathYear?: number | null;
+    birthDate?: string | null; // ISO DATE: "YYYY-MM-DD"
+    deathDate?: string | null; // ISO DATE: "YYYY-MM-DD"
     isLiving?: boolean;
     families?: string[];
     parentFamilies?: string[];
 }, actorId?: string): Promise<{ error: string | null }> {
+    const birthYear = person.birthDate ? new Date(person.birthDate).getFullYear() : null;
+    const deathYear = person.deathDate ? new Date(person.deathDate).getFullYear() : null;
     const { error } = await supabase
         .from('people')
         .insert({
@@ -351,8 +379,10 @@ export async function addPerson(person: {
             display_name: person.displayName,
             gender: person.gender,
             generation: person.generation,
-            birth_year: person.birthYear || null,
-            death_year: person.deathYear || null,
+            birth_date: person.birthDate || null,
+            birth_year: birthYear,
+            death_date: person.deathDate || null,
+            death_year: deathYear,
             is_living: person.isLiving ?? true,
             is_privacy_filtered: false,
             is_patrilineal: person.gender === 1,

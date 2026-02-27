@@ -57,7 +57,7 @@ export interface EditPersonFieldPayload {
  */
 export const ALLOWED_PERSON_COLUMNS = new Set([
     'display_name', 'surname', 'first_name', 'nick_name',
-    'birth_year', 'death_year', 'is_living',
+    'birth_date', 'birth_year', 'death_date', 'death_year', 'is_living',
     'occupation', 'company', 'education',
     'phone', 'email', 'zalo', 'facebook',
     'hometown', 'current_address',

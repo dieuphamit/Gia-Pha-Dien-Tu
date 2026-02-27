@@ -38,30 +38,36 @@ function RegisterContent() {
     } = useForm<RegisterForm>({ resolver: zodResolver(registerSchema) });
 
     const onSubmit = async (data: RegisterForm) => {
-        if (!inviteCode) {
-            setError('Bạn cần có mã mời để đăng ký');
-            return;
-        }
-
         try {
             setError('');
             setLoading(true);
 
-            // Validate invite code against Supabase
-            const { data: invite, error: inviteErr } = await supabase
-                .from('invite_links')
-                .select('*')
-                .eq('code', inviteCode)
-                .single();
+            let role = 'member';
 
-            if (inviteErr || !invite) {
-                setError('Mã mời không hợp lệ hoặc đã hết hạn');
-                return;
-            }
+            // Validate invite code if provided
+            if (inviteCode) {
+                const { data: invite, error: inviteErr } = await supabase
+                    .from('invite_links')
+                    .select('*')
+                    .eq('code', inviteCode)
+                    .single();
 
-            if (invite.max_uses && invite.used_count >= invite.max_uses) {
-                setError('Mã mời đã hết lượt sử dụng');
-                return;
+                if (inviteErr || !invite) {
+                    setError('Mã mời không hợp lệ hoặc đã hết hạn');
+                    return;
+                }
+
+                if (invite.max_uses && invite.used_count >= invite.max_uses) {
+                    setError('Mã mời đã hết lượt sử dụng');
+                    return;
+                }
+
+                role = invite.role || 'member';
+
+                await supabase
+                    .from('invite_links')
+                    .update({ used_count: (invite.used_count || 0) + 1 })
+                    .eq('id', invite.id);
             }
 
             // Sign up via Supabase Auth
@@ -81,19 +87,13 @@ function RegisterContent() {
                 return;
             }
 
-            // Increment invite used_count
-            await supabase
-                .from('invite_links')
-                .update({ used_count: (invite.used_count || 0) + 1 })
-                .eq('id', invite.id);
-
             // Create profile
             if (authData.user) {
                 await supabase.from('profiles').upsert({
                     id: authData.user.id,
                     email: data.email,
                     display_name: data.displayName,
-                    role: invite.role || 'member',
+                    role,
                     status: 'active',
                 });
             }
@@ -119,11 +119,6 @@ function RegisterContent() {
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    {!inviteCode && (
-                        <div className="rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
-                            ⚠️ Bạn cần có mã mời từ Admin để đăng ký
-                        </div>
-                    )}
 
                     {error && (
                         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
@@ -172,7 +167,7 @@ function RegisterContent() {
                         {errors.confirmPassword && <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>}
                     </div>
 
-                    <Button type="submit" className="w-full" disabled={loading || !inviteCode}>
+                    <Button type="submit" className="w-full" disabled={loading}>
                         {loading ? 'Đang đăng ký...' : 'Đăng ký'}
                     </Button>
                 </form>

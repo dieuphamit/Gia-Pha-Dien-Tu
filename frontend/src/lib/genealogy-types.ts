@@ -13,10 +13,10 @@ export interface PersonDetail {
     generation: number;
     chi?: number;
     birthYear?: number;
-    birthDate?: string;
+    birthDate?: string; // ISO DATE string: "YYYY-MM-DD" (from DATE column)
     birthPlace?: string;
     deathYear?: number;
-    deathDate?: string;
+    deathDate?: string; // ISO DATE string: "YYYY-MM-DD" (from DATE column)
     deathPlace?: string;
     isLiving: boolean;
     isPrivacyFiltered: boolean;
