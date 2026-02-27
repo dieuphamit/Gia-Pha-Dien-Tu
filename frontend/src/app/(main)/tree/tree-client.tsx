@@ -266,6 +266,10 @@ export default function TreeViewPage() {
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef({ startX: 0, startY: 0, startTx: 0, startTy: 0 });
     const pinchRef = useRef({ initialDist: 0, initialScale: 1 });
+    // Ref mirrors transform state so touch handlers always read latest values
+    // without needing to be inside a useEffect with transform dependencies
+    const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+    useEffect(() => { transformRef.current = transform; }, [transform]);
 
     // Fetch data
     useEffect(() => {
@@ -672,10 +676,10 @@ export default function TreeViewPage() {
             if (e.touches.length === 1) {
                 touching = true;
                 const t = e.touches[0];
-                dragRef.current = { startX: t.clientX, startY: t.clientY, startTx: transform.x, startTy: transform.y };
+                dragRef.current = { startX: t.clientX, startY: t.clientY, startTx: transformRef.current.x, startTy: transformRef.current.y };
             } else if (e.touches.length === 2) {
                 const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                pinchRef.current = { initialDist: dist, initialScale: transform.scale };
+                pinchRef.current = { initialDist: dist, initialScale: transformRef.current.scale };
             }
             lastTouches = Array.from(e.touches);
         };
@@ -716,7 +720,7 @@ export default function TreeViewPage() {
             el.removeEventListener('touchmove', onTouchMove);
             el.removeEventListener('touchend', onTouchEnd);
         };
-    }, [transform.x, transform.y, transform.scale]);
+    }, []); // transformRef.current always holds latest values — no need to re-attach listeners on each transform change
 
     // Pan to person
     const panToPerson = useCallback((handle: string) => {
@@ -860,6 +864,7 @@ export default function TreeViewPage() {
             <div className="flex-1 flex gap-0 min-h-0">
                 <div ref={viewportRef}
                     className="flex-1 relative overflow-hidden rounded-xl border-2 bg-gradient-to-br from-background to-muted/30 cursor-grab active:cursor-grabbing select-none"
+                    style={{ touchAction: 'none' }}
                     onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
                     onClick={() => { setShowSearch(false); setContextMenu(null); if (editorMode) setSelectedCard(null); }}
