@@ -42,7 +42,10 @@ export async function GET(req: NextRequest) {
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (!user.isAdmin) {
+    // Chỉ trả về tất cả khi là admin VÀ có param ?admin=1 (dành cho trang quản lý admin)
+    // Trang "Báo cáo của tôi" luôn chỉ hiện bug của chính mình
+    const showAll = user.isAdmin && searchParams.get('admin') === '1';
+    if (!showAll) {
         query = query.eq('reporter_id', user.uid);
     }
     if (status && status !== 'all') {

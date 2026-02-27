@@ -90,7 +90,7 @@ export default function AdminBugsPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) { setLoading(false); return; }
 
-        const params = new URLSearchParams({ page: String(pageIdx) });
+        const params = new URLSearchParams({ page: String(pageIdx), admin: '1' });
         if (statusFilter !== 'all') params.set('status', statusFilter);
 
         const res = await fetch(`/api/bug-reports?${params}`, {
