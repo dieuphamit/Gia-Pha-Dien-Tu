@@ -74,6 +74,7 @@ export function Sidebar() {
     const [pendingCount, setPendingCount] = useState(0);
     const [pendingUsersCount, setPendingUsersCount] = useState(0);
     const [openBugsCount, setOpenBugsCount] = useState(0);
+    const [pendingMediaCount, setPendingMediaCount] = useState(0);
     // Feature toggles — đọc từ app_settings, cập nhật realtime
     const [featureMedia, setFeatureMedia] = useState(true);
 
@@ -166,6 +167,28 @@ export function Sidebar() {
         };
     }, [isAdmin]);
 
+    // Fetch số media chờ duyệt (admin/editor thấy badge trên Thư viện)
+    useEffect(() => {
+        if (!canEdit) return;
+
+        const fetchPendingMedia = async () => {
+            const { count } = await supabase
+                .from('media')
+                .select('id', { count: 'exact', head: true })
+                .eq('state', 'PENDING');
+            setPendingMediaCount(count ?? 0);
+        };
+
+        fetchPendingMedia();
+
+        const channel = supabase
+            .channel('sidebar-pending-media')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'media' }, fetchPendingMedia)
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [canEdit]);
+
     // Fetch số bug open (chỉ khi là admin)
     useEffect(() => {
         if (!isAdmin) return;
@@ -228,11 +251,12 @@ export function Sidebar() {
                     .filter(item => item.href !== '/media' || featureMedia)
                     .map((item) => {
                         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                        const badge = (item.href === '/media' && canEdit) ? pendingMediaCount : 0;
                         return (
                             <Link key={item.href} href={item.href}>
                                 <span
                                     className={cn(
-                                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                                        'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                                         isActive
                                             ? 'bg-primary text-primary-foreground'
                                             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -240,6 +264,7 @@ export function Sidebar() {
                                 >
                                     <item.icon className="h-4 w-4 shrink-0" />
                                     {!collapsed && item.label}
+                                    {badge > 0 && <PendingBadge count={badge} collapsed={collapsed} />}
                                 </span>
                             </Link>
                         );

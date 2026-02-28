@@ -183,12 +183,27 @@ async function applyAddPerson(
 
     if (error) return { ok: false, error: `Lỗi tạo thành viên: ${error.message}` };
 
-    // Link the avatar media record to the newly created person
+    // Verify avatar media is PUBLISHED (state check) and link to newly created person
     if (payload.avatarUrl) {
-        await serviceClient
+        const { data: mediaRow } = await serviceClient
             .from('media')
-            .update({ linked_person: handle })
-            .eq('storage_url', payload.avatarUrl);
+            .select('id, state')
+            .eq('storage_url', payload.avatarUrl)
+            .maybeSingle();
+        if (mediaRow) {
+            await serviceClient
+                .from('media')
+                .update({ linked_person: handle })
+                .eq('id', mediaRow.id);
+            // Only set avatar_url if the media is already PUBLISHED (admin-uploaded contributions);
+            // member-submitted photos stay PENDING and will be set via set-avatar after approval.
+            if (mediaRow.state !== 'PUBLISHED') {
+                await serviceClient
+                    .from('people')
+                    .update({ avatar_url: null })
+                    .eq('handle', handle);
+            }
+        }
     }
 
     // Handle initial spouse setup

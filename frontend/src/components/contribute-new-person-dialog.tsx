@@ -80,6 +80,7 @@ export function ContributeNewPersonDialog() {
 
     const handlePhotoSelect = (file: File) => {
         if (!file.type.startsWith('image/')) return;
+        if (file.size > 5 * 1024 * 1024) { setError('Ảnh quá lớn. Giới hạn 5MB.'); return; }
         setPhotoFile(file);
         const reader = new FileReader();
         reader.onload = e => setPhotoPreview(e.target?.result as string);

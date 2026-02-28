@@ -115,9 +115,25 @@ export async function PATCH(
         .from('media')
         .update(updates)
         .eq('id', id)
-        .select('id, state, title, linked_person')
+        .select('id, state, title, linked_person, storage_url')
         .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Auto-set people.avatar_url for the first approved photo
+    if (data.state === 'PUBLISHED' && data.linked_person && data.storage_url) {
+        const { data: person } = await sc
+            .from('people')
+            .select('avatar_url')
+            .eq('handle', data.linked_person)
+            .maybeSingle();
+        if (person && !person.avatar_url) {
+            await sc
+                .from('people')
+                .update({ avatar_url: data.storage_url, updated_at: new Date().toISOString() })
+                .eq('handle', data.linked_person);
+        }
+    }
+
     return NextResponse.json({ ok: true, media: data });
 }

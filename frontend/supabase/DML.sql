@@ -121,8 +121,9 @@ ON CONFLICT DO NOTHING;
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO app_settings (key, value, description) VALUES
-('feature_media_enabled', 'true', 'Bật/tắt chức năng Thư viện hình ảnh & tài liệu'),
-('media_upload_limit',    '5',    'Số lượng file tối đa mỗi thành viên được tải lên (admin & editor không bị giới hạn)')
+('feature_media_enabled',      'true', 'Bật/tắt chức năng Thư viện hình ảnh & tài liệu'),
+('media_upload_limit',         '5',    'Số lượng file tối đa mỗi thành viên được tải lên (admin & editor không bị giới hạn)'),
+('media_max_image_size_mb',    '5',    'Kích thước tối đa mỗi ảnh tải lên (đơn vị MB). Áp dụng cho tất cả người dùng.')
 ON CONFLICT (key) DO NOTHING;
 
 

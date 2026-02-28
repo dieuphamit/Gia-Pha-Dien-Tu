@@ -18,8 +18,7 @@ async function getAuthUser(req: NextRequest) {
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const DOC_TYPES = ['application/pdf'];
 const ALLOWED_TYPES = [...IMAGE_TYPES, ...DOC_TYPES];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;  // 10MB
-const MAX_DOC_SIZE = 50 * 1024 * 1024;  // 50MB
+const MAX_DOC_SIZE = 50 * 1024 * 1024;  // 50MB (fixed)
 
 export async function POST(req: NextRequest) {
     // 1. Xác thực
@@ -28,29 +27,41 @@ export async function POST(req: NextRequest) {
 
     const sc = getServiceClient();
 
-    // 2. Đọc giới hạn từ app_settings (mặc định 5)
-    const { data: limitSetting } = await sc
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'media_upload_limit')
-        .single();
-    const uploadLimit = parseInt(limitSetting?.value ?? '5', 10);
+    // 2. Kiểm tra role uploader (admin/editor được duyệt ngay)
+    const { data: uploaderProfile } = await sc
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+    const isAdminOrEditor = uploaderProfile?.role === 'admin' || uploaderProfile?.role === 'editor';
 
-    // 3. Đếm số media hiện tại của user (chỉ PENDING + PUBLISHED, không đếm đã xóa)
+    // 3. Đọc giới hạn từ app_settings
+    const { data: settingsRows } = await sc
+        .from('app_settings')
+        .select('key, value')
+        .in('key', ['media_upload_limit', 'media_max_image_size_mb']);
+    const settingsMap: Record<string, string> = {};
+    (settingsRows ?? []).forEach((r: { key: string; value: string }) => { settingsMap[r.key] = r.value; });
+    const uploadLimit = parseInt(settingsMap['media_upload_limit'] ?? '5', 10);
+    const maxImageSizeMb = parseInt(settingsMap['media_max_image_size_mb'] ?? '5', 10);
+    const MAX_IMAGE_SIZE_DYNAMIC = maxImageSizeMb * 1024 * 1024;
+
+    // 4. Đếm số media hiện tại của user (chỉ PENDING + PUBLISHED, không đếm đã xóa)
+    // Admin/editor không bị giới hạn quota
     const { count: currentCount } = await sc
         .from('media')
         .select('id', { count: 'exact', head: true })
         .eq('uploader_id', user.id)
         .in('state', ['PENDING', 'PUBLISHED']);
 
-    if ((currentCount ?? 0) >= uploadLimit) {
+    if (!isAdminOrEditor && (currentCount ?? 0) >= uploadLimit) {
         return NextResponse.json(
             { error: `Bạn đã đạt giới hạn ${uploadLimit} file. Xóa bớt file cũ để tải lên thêm.` },
             { status: 400 }
         );
     }
 
-    // 4. Đọc form data
+    // 5. Đọc form data
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const title = formData.get('title') as string | null;
@@ -59,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     if (!file) return NextResponse.json({ error: 'Không có file' }, { status: 400 });
 
-    // 5. Validate loại file
+    // 6. Validate loại file
     if (!ALLOWED_TYPES.includes(file.type)) {
         return NextResponse.json(
             { error: 'Loại file không được hỗ trợ. Chỉ chấp nhận: JPG, PNG, WebP, GIF, PDF' },
@@ -68,11 +79,11 @@ export async function POST(req: NextRequest) {
     }
 
     const isImage = IMAGE_TYPES.includes(file.type);
-    const maxSize = isImage ? MAX_IMAGE_SIZE : MAX_DOC_SIZE;
+    const maxSize = isImage ? MAX_IMAGE_SIZE_DYNAMIC : MAX_DOC_SIZE;
 
     // 6. Validate kích thước
     if (file.size > maxSize) {
-        const limit = isImage ? '10MB' : '50MB';
+        const limit = isImage ? `${maxImageSizeMb}MB` : '50MB';
         return NextResponse.json({ error: `File quá lớn. Giới hạn: ${limit}` }, { status: 400 });
     }
 
@@ -98,6 +109,9 @@ export async function POST(req: NextRequest) {
         .from('media')
         .getPublicUrl(storagePath);
 
+    // Admin/editor uploads are immediately published; member uploads need review
+    const uploadedState = isAdminOrEditor ? 'PUBLISHED' : 'PENDING';
+
     // 9. Tạo record trong DB
     const { data: mediaRecord, error: dbError } = await sc
         .from('media')
@@ -105,7 +119,7 @@ export async function POST(req: NextRequest) {
             file_name: file.name,
             mime_type: file.type,
             file_size: file.size,
-            state: 'PENDING',
+            state: uploadedState,
             uploader_id: user.id,
             storage_path: storagePath,
             storage_url: publicUrl,
@@ -123,11 +137,27 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Lưu DB thất bại: ${dbError.message}` }, { status: 500 });
     }
 
+    // Auto-set avatar: admin/editor upload → PUBLISHED + linked_person + person has no avatar yet
+    if (uploadedState === 'PUBLISHED' && linkedPerson && isImage) {
+        const { data: person } = await sc
+            .from('people')
+            .select('avatar_url')
+            .eq('handle', linkedPerson)
+            .maybeSingle();
+        if (person && !person.avatar_url) {
+            await sc
+                .from('people')
+                .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+                .eq('handle', linkedPerson);
+        }
+    }
+
     return NextResponse.json({
         ok: true,
         id: mediaRecord.id,
         storage_url: mediaRecord.storage_url,
         media_type: mediaRecord.media_type,
+        state: uploadedState,
         quota: { used: (currentCount ?? 0) + 1, limit: uploadLimit },
     });
 }

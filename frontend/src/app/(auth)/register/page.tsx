@@ -36,6 +36,7 @@ function RegisterContent() {
 
     const handleAvatarSelect = (file: File) => {
         if (!file.type.startsWith('image/')) return;
+        if (file.size > 5 * 1024 * 1024) { setError('Ảnh quá lớn. Giới hạn 5MB.'); return; }
         setAvatarFile(file);
         const reader = new FileReader();
         reader.onload = e => setAvatarPreview(e.target?.result as string);

@@ -147,6 +147,14 @@ export default function MediaLibraryPage() {
         const file = e.target.files?.[0];
         if (!file || !user) return;
 
+        // ── Client-side size check ───────────────────────────
+        const isImage = file.type.startsWith('image/');
+        if (isImage && file.size > 5 * 1024 * 1024) {
+            setUploadError('Ảnh quá lớn. Giới hạn 5MB.');
+            if (fileRef.current) fileRef.current.value = '';
+            return;
+        }
+
         // ── Lock: tránh double-fire ──────────────────────────
         if (uploadingRef.current) return;
         uploadingRef.current = true;
@@ -184,12 +192,23 @@ export default function MediaLibraryPage() {
 
     // ── Approve / Reject ─────────────────────────────────────
     const handleAction = async (id: string, state: 'PUBLISHED' | 'REJECTED') => {
-        const token = await getToken();
-        await fetch(`/api/media/${id}`, {
-            method: 'PATCH',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state }),
-        });
+        setUploadError(null);
+        try {
+            const token = await getToken();
+            const res = await fetch(`/api/media/${id}`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state }),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                setUploadError((json as { error?: string }).error || 'Thao tác thất bại');
+                return;
+            }
+        } catch {
+            setUploadError('Lỗi kết nối');
+            return;
+        }
         // Realtime sẽ trigger fetchMedia tự động,
         // nhưng gọi thêm để đảm bảo (REJECTED xóa khỏi danh sách ngay)
         fetchMedia();
@@ -199,13 +218,21 @@ export default function MediaLibraryPage() {
     // ── Set as Avatar ─────────────────────────────────────────
     const handleSetAvatar = async (item: MediaItem) => {
         if (!item.linked_person) return;
-        const token = await getToken();
-        await fetch(`/api/people/${item.linked_person}/set-avatar`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mediaId: item.id }),
-        });
-        // Optionally show success feedback
+        setUploadError(null);
+        try {
+            const token = await getToken();
+            const res = await fetch(`/api/people/${item.linked_person}/set-avatar`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mediaId: item.id }),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                setUploadError((json as { error?: string }).error || 'Không đặt được ảnh đại diện');
+            }
+        } catch {
+            setUploadError('Lỗi kết nối');
+        }
     };
 
     // ── Delete ───────────────────────────────────────────────

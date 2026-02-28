@@ -325,9 +325,7 @@ export default function PersonProfilePage() {
         if (!selectedParentFamily) return;
         setRelLoading(true);
         setRelError('');
-        console.log('[handleAddParent] Adding', handle, 'to family', selectedParentFamily);
         const { error } = await addPersonAsChild(handle, selectedParentFamily);
-        console.log('[handleAddParent] Result:', error ? `ERROR: ${error}` : 'SUCCESS');
         if (error) { setRelError(error); } else { setSelectedParentFamily(''); await fetchPerson(); }
         setRelLoading(false);
     };
@@ -423,6 +421,7 @@ export default function PersonProfilePage() {
 
     const handleMediaUpload = async (file: File) => {
         if (!file || !user) return;
+        if (file.size > 5 * 1024 * 1024) { setMediaError('Ảnh quá lớn. Giới hạn 5MB.'); return; }
         setUploadingMedia(true);
         setMediaError('');
         try {
@@ -439,7 +438,7 @@ export default function PersonProfilePage() {
             if (!res.ok) {
                 setMediaError(json.error || 'Tải ảnh thất bại');
             } else {
-                await fetchMedia();
+                await Promise.all([fetchMedia(), fetchPerson()]);
             }
         } catch {
             setMediaError('Lỗi khi tải ảnh lên');
@@ -484,8 +483,13 @@ export default function PersonProfilePage() {
             });
             if (res.ok) {
                 setPerson(p => p ? { ...p, avatarUrl: undefined } : p);
+            } else {
+                const json = await res.json().catch(() => ({}));
+                setMediaError((json as { error?: string }).error || 'Không xóa được ảnh đại diện');
             }
-        } catch { /* ignore */ }
+        } catch {
+            setMediaError('Lỗi kết nối');
+        }
     };
 
     if (loading) {
@@ -613,6 +617,53 @@ export default function PersonProfilePage() {
             {/* ── EDIT FORM (Admin & Editor only) ── */}
             {editing && (
                 <div className="space-y-4">
+                    {/* Ảnh đại diện */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Image className="h-4 w-4" /> Ảnh đại diện
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-4">
+                                <PersonAvatar
+                                    avatarUrl={person.avatarUrl}
+                                    displayName={person.displayName}
+                                    gender={person.gender}
+                                    isPatrilineal={person.isPatrilineal}
+                                    isLiving={person.isLiving}
+                                    size="lg"
+                                />
+                                <div className="space-y-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => mediaInputRef.current?.click()}
+                                        disabled={uploadingMedia}
+                                    >
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        {uploadingMedia ? 'Đang tải...' : 'Tải ảnh lên'}
+                                    </Button>
+                                    {person.avatarUrl && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive"
+                                            onClick={handleClearAvatar}
+                                        >
+                                            <X className="h-4 w-4 mr-2" />
+                                            Xóa ảnh đại diện
+                                        </Button>
+                                    )}
+                                    <p className="text-xs text-muted-foreground">Ảnh tải lên được duyệt tự động và đặt làm đại diện ngay.</p>
+                                </div>
+                            </div>
+                            {mediaError && <p className="mt-2 text-xs text-destructive">{mediaError}</p>}
+                        </CardContent>
+                    </Card>
+
                     {/* Thông tin cá nhân */}
                     <Card>
                         <CardHeader>

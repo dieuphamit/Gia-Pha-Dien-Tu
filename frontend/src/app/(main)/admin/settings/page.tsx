@@ -35,6 +35,8 @@ interface NumberSetting {
     icon: React.ElementType;
     min: number;
     max: number;
+    unit: string;
+    defaultValue: string;
 }
 
 const NUMBER_SETTINGS: NumberSetting[] = [
@@ -45,6 +47,18 @@ const NUMBER_SETTINGS: NumberSetting[] = [
         icon: Upload,
         min: 1,
         max: 100,
+        unit: 'file / thành viên',
+        defaultValue: '5',
+    },
+    {
+        key: 'media_max_image_size_mb',
+        label: 'Kích thước ảnh tối đa',
+        description: 'Giới hạn dung lượng mỗi ảnh tải lên. Áp dụng cho tất cả người dùng (kể cả admin & editor).',
+        icon: Image,
+        min: 1,
+        max: 50,
+        unit: 'MB',
+        defaultValue: '5',
     },
 ];
 
@@ -102,8 +116,8 @@ export default function AdminSettingsPage() {
 
     // Lưu number setting
     const handleNumberSave = async (key: string) => {
-        const val = parseInt(drafts[key] ?? '5', 10);
         const setting = NUMBER_SETTINGS.find((s) => s.key === key)!;
+        const val = parseInt(drafts[key] ?? setting.defaultValue, 10);
         const clamped = Math.max(setting.min, Math.min(setting.max, isNaN(val) ? setting.min : val));
         setDrafts((prev) => ({ ...prev, [key]: String(clamped) }));
         await saveSetting(key, String(clamped));
@@ -201,12 +215,12 @@ export default function AdminSettingsPage() {
                                                     type="number"
                                                     min={setting.min}
                                                     max={setting.max}
-                                                    value={drafts[setting.key] ?? '5'}
+                                                    value={drafts[setting.key] ?? setting.defaultValue}
                                                     onChange={(e) => setDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))}
                                                     className="w-24 h-8 text-sm"
                                                     disabled={isSaving}
                                                 />
-                                                <span className="text-xs text-muted-foreground">file / thành viên</span>
+                                                <span className="text-xs text-muted-foreground">{setting.unit}</span>
                                                 {isDirty && (
                                                     <Button
                                                         size="sm"
