@@ -7,10 +7,10 @@ import { Resend } from 'resend';
 /** Địa chỉ gửi mail (phải verify domain trên Resend) */
 const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'noreply@giaphadientu.vn';
 
-/** Lazy initialization — tránh throw khi không có API key lúc import (test env) */
-function getResend(): Resend {
+/** Lazy initialization — trả về null nếu chưa cấu hình RESEND_API_KEY */
+function getResend(): Resend | null {
     const key = process.env.RESEND_API_KEY;
-    if (!key) throw new Error('RESEND_API_KEY is not set');
+    if (!key) return null;
     return new Resend(key);
 }
 
@@ -49,7 +49,10 @@ export async function sendBirthdayNotificationToMembers(
     const age = calcAge(person.birthDate);
     const dateStr = formatDate(person.birthDate);
 
-    const { error } = await getResend().emails.send({
+    const resend = getResend();
+    if (!resend) { console.warn('[sendBirthdayNotificationToMembers] RESEND_API_KEY not set, skipping'); return; }
+
+    const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
         to: recipientEmails,
         subject: `🎂 Hôm nay là sinh nhật của ${person.displayName}!`,
@@ -101,7 +104,10 @@ export async function sendBirthdayReminderToAdmin(
     const age = calcAge(person.birthDate) + 1; // ngày mai tròn
     const dateStr = formatDate(person.birthDate);
 
-    const { error } = await getResend().emails.send({
+    const resend = getResend();
+    if (!resend) { console.warn('[sendBirthdayReminderToAdmin] RESEND_API_KEY not set, skipping'); return; }
+
+    const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
         to: adminEmail,
         subject: `🔔 Nhắc nhở: Ngày mai là sinh nhật của ${person.displayName}`,
@@ -137,5 +143,119 @@ export async function sendBirthdayReminderToAdmin(
 
     if (error) {
         console.error(`[sendBirthdayReminderToAdmin] Failed for ${person.handle}:`, error);
+    }
+}
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
+
+/**
+ * Gửi email thông báo cho admin khi có user đăng ký mới (chờ duyệt).
+ */
+export async function sendNewUserNotificationToAdmin(
+    user: { email: string; displayName: string },
+    adminEmails: string[]
+): Promise<void> {
+    if (adminEmails.length === 0) return;
+    const resend = getResend();
+    if (!resend) { console.warn('[sendNewUserNotificationToAdmin] RESEND_API_KEY not set, skipping'); return; }
+
+    const { error } = await resend.emails.send({
+        from: FROM_ADDRESS,
+        to: adminEmails,
+        subject: `[Gia Phả] Tài khoản mới chờ duyệt: ${user.displayName}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+                <h2 style="color: #1e40af; margin-bottom: 4px;">👤 Tài khoản mới chờ xét duyệt</h2>
+                <p style="color: #6b7280; margin-top: 0;">Một người dùng vừa đăng ký và đang chờ bạn phê duyệt.</p>
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 16px 0;">
+                    <p style="margin: 0 0 8px 0;"><strong>Tên:</strong> ${user.displayName}</p>
+                    <p style="margin: 0;"><strong>Email:</strong> ${user.email}</p>
+                </div>
+                <div style="margin-top: 24px;">
+                    <a href="${APP_URL}/admin/users"
+                       style="background: #1e40af; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">
+                        Xét duyệt ngay
+                    </a>
+                </div>
+                <p style="margin-top: 32px; font-size: 11px; color: #9ca3af; text-align: center;">
+                    Email tự động — Gia Phả Điện Tử họ Phạm
+                </p>
+            </div>
+        `,
+    });
+
+    if (error) {
+        console.error('[sendNewUserNotificationToAdmin] Failed:', error);
+    }
+}
+
+export type ContributionType = 'add_person' | 'edit_person_field' | 'add_event' | 'add_post' | 'add_quiz_question';
+
+const CONTRIBUTION_LABEL: Record<ContributionType, string> = {
+    add_person: 'Thêm thành viên mới',
+    edit_person_field: 'Chỉnh sửa thông tin thành viên',
+    add_event: 'Thêm sự kiện',
+    add_post: 'Thêm bài viết',
+    add_quiz_question: 'Thêm câu hỏi',
+};
+
+/**
+ * Gửi email thông báo cho admin khi có contribution mới (chờ duyệt).
+ */
+export async function sendNewContributionNotificationToAdmin(
+    contribution: {
+        authorEmail: string;
+        fieldName: ContributionType;
+        fieldLabel: string;
+        personName?: string;
+        summary?: string;
+    },
+    adminEmails: string[]
+): Promise<void> {
+    if (adminEmails.length === 0) return;
+    const resend = getResend();
+    if (!resend) { console.warn('[sendNewContributionNotificationToAdmin] RESEND_API_KEY not set, skipping'); return; }
+
+    const typeLabel = CONTRIBUTION_LABEL[contribution.fieldName] ?? contribution.fieldLabel;
+    const subject = contribution.personName
+        ? `[Gia Phả] Đóng góp mới: ${typeLabel} — ${contribution.personName}`
+        : `[Gia Phả] Đóng góp mới: ${typeLabel}`;
+
+    const personRow = contribution.personName
+        ? `<p style="margin: 0 0 8px 0;"><strong>Thành viên liên quan:</strong> ${contribution.personName}</p>`
+        : '';
+    const summaryRow = contribution.summary
+        ? `<p style="margin: 0 0 8px 0;"><strong>Nội dung:</strong> ${contribution.summary}</p>`
+        : '';
+
+    const { error } = await resend.emails.send({
+        from: FROM_ADDRESS,
+        to: adminEmails,
+        subject,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+                <h2 style="color: #7c3aed; margin-bottom: 4px;">📝 Đóng góp mới chờ xét duyệt</h2>
+                <p style="color: #6b7280; margin-top: 0;">Một thành viên vừa gửi đóng góp và đang chờ bạn phê duyệt.</p>
+                <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 20px; margin: 16px 0;">
+                    <p style="margin: 0 0 8px 0;"><strong>Loại đóng góp:</strong> ${typeLabel}</p>
+                    <p style="margin: 0 0 8px 0;"><strong>Người gửi:</strong> ${contribution.authorEmail}</p>
+                    ${personRow}
+                    ${summaryRow}
+                </div>
+                <div style="margin-top: 24px;">
+                    <a href="${APP_URL}/admin/edits"
+                       style="background: #7c3aed; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">
+                        Xét duyệt ngay
+                    </a>
+                </div>
+                <p style="margin-top: 32px; font-size: 11px; color: #9ca3af; text-align: center;">
+                    Email tự động — Gia Phả Điện Tử họ Phạm
+                </p>
+            </div>
+        `,
+    });
+
+    if (error) {
+        console.error('[sendNewContributionNotificationToAdmin] Failed:', error);
     }
 }

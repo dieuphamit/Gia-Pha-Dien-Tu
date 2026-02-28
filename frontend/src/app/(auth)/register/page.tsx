@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { TreePine, Eye, EyeOff, Camera, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,12 +24,12 @@ const registerSchema = z.object({
 type RegisterForm = z.infer<typeof registerSchema>;
 
 function RegisterContent() {
-    const router = useRouter();
     const searchParams = useSearchParams();
     const inviteCode = searchParams.get('code') || '';
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [success, setSuccess] = useState(false);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +106,7 @@ function RegisterContent() {
                     email: data.email,
                     display_name: data.displayName,
                     role,
-                    status: 'active',
+                    status: 'pending',
                 });
 
                 // Upload avatar if provided (graceful — does not block registration)
@@ -136,13 +136,38 @@ function RegisterContent() {
                 }
             }
 
-            router.push('/');
+            // Sign out immediately — user must wait for admin approval
+            await supabase.auth.signOut();
+            setSuccess(true);
         } catch (err: unknown) {
             setError('Đăng ký thất bại. Vui lòng thử lại.');
         } finally {
             setLoading(false);
         }
     };
+
+    if (success) {
+        return (
+            <Card className="border-0 shadow-2xl">
+                <CardContent className="pt-8 pb-8 text-center space-y-4">
+                    <div className="flex justify-center">
+                        <div className="rounded-full bg-green-100 p-4">
+                            <TreePine className="h-10 w-10 text-green-600" />
+                        </div>
+                    </div>
+                    <CardTitle className="text-xl font-bold text-green-700">Đăng ký thành công!</CardTitle>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        Tài khoản của bạn đã được tạo và đang <strong>chờ quản trị viên xét duyệt</strong>.
+                        <br />
+                        Bạn sẽ nhận được thông báo khi tài khoản được phê duyệt.
+                    </p>
+                    <a href="/login" className="inline-block text-sm text-primary hover:underline">
+                        Quay về đăng nhập
+                    </a>
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <Card className="border-0 shadow-2xl">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { sendNewUserNotificationToAdmin } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
     try {
@@ -24,6 +25,22 @@ export async function POST(request: NextRequest) {
                 { id: userId, email, role: 'member', status: 'pending' },
                 { onConflict: 'id', ignoreDuplicates: true }
             );
+
+        if (!error) {
+            // Fire-and-forget: notify admins about the new pending user
+            const displayName = user.user_metadata?.display_name ?? email;
+            serviceClient
+                .from('profiles')
+                .select('email')
+                .eq('role', 'admin')
+                .eq('status', 'active')
+                .then(({ data: admins }) => {
+                    const adminEmails = (admins ?? []).map((a: { email: string }) => a.email).filter(Boolean);
+                    sendNewUserNotificationToAdmin({ email, displayName }, adminEmails).catch(
+                        (e) => console.error('[create-profile] sendNewUserNotificationToAdmin failed:', e)
+                    );
+                });
+        }
 
         return NextResponse.json({ ok: !error });
     } catch {

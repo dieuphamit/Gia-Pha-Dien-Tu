@@ -812,6 +812,22 @@ export async function submitContribution(params: SubmitContributionParams): Prom
         note: params.note || null,
         status: 'pending',
     });
+
+    if (!error) {
+        // Fire-and-forget: notify admins about the new contribution
+        fetch('/api/notify-contribution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                authorEmail: params.authorEmail,
+                fieldName: params.fieldName,
+                fieldLabel: params.fieldLabel,
+                personName: params.personName,
+                summary: params.note,
+            }),
+        }).catch((e) => console.error('[submitContribution] notify-contribution failed:', e));
+    }
+
     return { error: error ? error.message : null };
 }
 

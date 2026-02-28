@@ -75,6 +75,8 @@ export default function PersonProfilePage() {
     const [selectedChildrenHandles, setSelectedChildrenHandles] = useState<string[]>([]);
     const [allSpouseOptions, setAllSpouseOptions] = useState<FamilyOption[]>([]);
     const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
+    const [familyChildrenMap, setFamilyChildrenMap] = useState<Map<string, string[]>>(new Map());
+    const [personNameMap, setPersonNameMap] = useState<Map<string, string>>(new Map());
 
     // Media state
     interface MediaItem {
@@ -153,19 +155,23 @@ export default function PersonProfilePage() {
     const loadFamilyInfo = async () => {
         const { supabase } = await import('@/lib/supabase');
         const [{ data: fams }, { data: people }] = await Promise.all([
-            supabase.from('families').select('handle, father_handle, mother_handle').order('handle'),
+            supabase.from('families').select('handle, father_handle, mother_handle, children').order('handle'),
             supabase.from('people').select('handle, display_name'),
         ]);
         if (!fams || !people) return;
         const nameMap = new Map(people.map(p => [p.handle as string, p.display_name as string]));
+        setPersonNameMap(nameMap);
         const infoMap = new Map<string, string>();
+        const childrenMap = new Map<string, string[]>();
         fams.forEach(f => {
             const parts: string[] = [];
             if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
             if (f.mother_handle) parts.push(nameMap.get(f.mother_handle) || f.mother_handle);
             infoMap.set(f.handle, parts.length > 0 ? parts.join(' & ') : f.handle);
+            childrenMap.set(f.handle, (f.children as string[]) || []);
         });
         setFamilyInfoMap(infoMap);
+        setFamilyChildrenMap(childrenMap);
     };
 
     const fetchMedia = useCallback(async () => {
@@ -388,6 +394,7 @@ export default function PersonProfilePage() {
 
         setSelectedChildrenHandles([]);
         await fetchPerson();
+        await loadFamilyInfo();
         setRelLoading(false);
     };
 
@@ -430,6 +437,7 @@ export default function PersonProfilePage() {
 
         setSelectedSpouseHandle('');
         await fetchPerson();
+        await loadFamilyInfo();
         setRelLoading(false);
     };
 
@@ -943,24 +951,35 @@ export default function PersonProfilePage() {
                             <div className="space-y-4">
                                 <div>
                                     <p className="text-sm font-medium mb-2">Danh sách gia đình đã có (Vợ/Chồng/Con)</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {(person?.families || []).map(fh => (
-                                            <span key={fh} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium" title={fh}>
-                                                {familyInfoMap.get(fh) || fh}
-                                                <button
-                                                    type="button"
-                                                    className="ml-1 text-muted-foreground hover:text-destructive"
-                                                    onClick={() => handleRemoveSpouse(fh)}
-                                                    disabled={relLoading}
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                            </span>
-                                        ))}
-                                        {(person?.families || []).length === 0 && (
-                                            <span className="text-xs text-muted-foreground">Chưa có</span>
-                                        )}
-                                    </div>
+                                    {(person?.families || []).length === 0 ? (
+                                        <span className="text-xs text-muted-foreground">Chưa có</span>
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            {(person?.families || []).map(fh => {
+                                                const children = familyChildrenMap.get(fh) || [];
+                                                return (
+                                                    <div key={fh} className="rounded-lg border px-3 py-2 text-xs">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="font-medium">{familyInfoMap.get(fh) || fh}</span>
+                                                            <button
+                                                                type="button"
+                                                                className="text-muted-foreground hover:text-destructive shrink-0"
+                                                                onClick={() => handleRemoveSpouse(fh)}
+                                                                disabled={relLoading}
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </div>
+                                                        {children.length > 0 && (
+                                                            <p className="mt-1 text-muted-foreground">
+                                                                Con: {children.map(ch => personNameMap.get(ch) || ch).join(', ')}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2 pt-2 border-t">
@@ -1183,28 +1202,51 @@ export default function PersonProfilePage() {
                                 <CardTitle className="text-base">Quan hệ gia đình</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="space-y-3">
+                                <div className="space-y-4">
+                                    {/* Cha/Mẹ */}
                                     <div>
-                                        <p className="text-sm font-medium text-muted-foreground">Gia đình (cha/mẹ)</p>
+                                        <p className="text-sm font-semibold mb-2">Cha / Mẹ</p>
                                         {person.parentFamilies && person.parentFamilies.length > 0 ? (
-                                            person.parentFamilies.map((f) => (
-                                                <Badge key={f} variant="outline" className="mr-1" title={f}>
-                                                    {familyInfoMap.get(f) || f}
-                                                </Badge>
-                                            ))
+                                            <div className="space-y-2">
+                                                {person.parentFamilies.map((f) => (
+                                                    <div key={f} className="rounded-lg border px-3 py-2 text-sm">
+                                                        <p className="font-medium">{familyInfoMap.get(f) || f}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         ) : (
                                             <p className="text-sm text-muted-foreground">Không có thông tin</p>
                                         )}
                                     </div>
                                     <Separator />
+                                    {/* Vợ/Chồng & Con */}
                                     <div>
-                                        <p className="text-sm font-medium text-muted-foreground">Gia đình (vợ/chồng, con)</p>
+                                        <p className="text-sm font-semibold mb-2">Vợ / Chồng &amp; Con cái</p>
                                         {person.families && person.families.length > 0 ? (
-                                            person.families.map((f) => (
-                                                <Badge key={f} variant="outline" className="mr-1" title={f}>
-                                                    {familyInfoMap.get(f) || f}
-                                                </Badge>
-                                            ))
+                                            <div className="space-y-3">
+                                                {person.families.map((f) => {
+                                                    const children = familyChildrenMap.get(f) || [];
+                                                    return (
+                                                        <div key={f} className="rounded-lg border px-3 py-2 text-sm space-y-2">
+                                                            <p className="font-medium">{familyInfoMap.get(f) || f}</p>
+                                                            {children.length > 0 ? (
+                                                                <div>
+                                                                    <p className="text-xs text-muted-foreground mb-1">Con cái ({children.length} người):</p>
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {children.map(ch => (
+                                                                            <Badge key={ch} variant="secondary" className="text-xs font-normal">
+                                                                                {personNameMap.get(ch) || ch}
+                                                                            </Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground">Chưa có con</p>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         ) : (
                                             <p className="text-sm text-muted-foreground">Không có thông tin</p>
                                         )}
