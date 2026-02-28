@@ -5,21 +5,22 @@
 -- Chạy file này SAU DDL.sql
 --
 -- Sections:
---   1. people       — 25 thành viên demo (5 thế hệ, dòng họ Phạm)
---   2. families     — 7 gia đình (quan hệ cha/mẹ/con)
---   3. family_questions — 5 câu hỏi xác minh
---   4. app_settings — giá trị mặc định tính năng
---   5. storage      — tạo bucket 'media' trên Supabase Storage
+--   1. people       — 62 thành viên demo (5 thế hệ, nhánh Phạm + nhánh Ô Nhiên)
+--   2. families     — 16 gia đình (F001-F002, F005-F018)
+--   3. updates      — F001 children, birth_date/death_date từ birth_year/death_year
+--   4. family_questions — 5 câu hỏi xác minh
+--   5. app_settings — giá trị mặc định tính năng
+--   6. storage      — tạo bucket 'media' trên Supabase Storage
 --
 -- ⚠️  Xóa sections 1-3 nếu dùng dữ liệu thật
 -- ============================================================
 --
 -- Cấu trúc cây demo:
 --   Đời 1 : Phạm Hướng (F001)
---   Đời 2 : Phạm Quang Viên + Đinh Thị Khai (F002)
---   Đời 3 : 8 con của F002 + vợ/chồng ngoại tộc
---   Đời 4 : con của từng nhánh Đời 3
---   Đời 5 : con của F008 (Nguyễn Ngọc Dũng + Nguyễn Nữ Hoài Trâm)
+--   Đời 2 : Phạm Quang Viên + Đinh Thị Khai (F002) | Ô Nhiên + Dượng Yên (F010)
+--   Đời 3 : 8 con của F002 + vợ/chồng              | 8 con của F010 + vợ/chồng
+--   Đời 4 : con các nhánh Đời 3                    | con các nhánh F011-F018
+--   Đời 5 : con F008 (Dũng + Trâm) | con F018 (Nhật + Thu)
 -- ============================================================
 
 
@@ -78,6 +79,77 @@ INSERT INTO people (
 
 ON CONFLICT (handle) DO NOTHING;
 
+-- ── Nhánh Ô Nhiên (P031–P067, thêm từ migration 003) ────────
+
+INSERT INTO people (
+    handle, display_name, gender, generation,
+    birth_year, death_year, is_living, is_patrilineal,
+    families, parent_families, current_address, occupation
+) VALUES
+
+-- ── Đời 2: Ô Nhiên + Dượng Yên ─────────────────────────────
+('P031', 'Ô Nhiên',               2, 2, NULL, NULL, true,  true,  '{"F010"}', '{"F001"}', NULL, NULL),
+('P032', 'Dượng Yên',             1, 2, NULL, NULL, true,  false, '{"F010"}', '{}',       NULL, NULL),
+
+-- ── Đời 3: 8 con của F010 (Dượng Yên + Ô Nhiên) ────────────
+('P033', 'Phan Thị Lan',          2, 3, NULL, NULL, true,  false, '{"F011"}', '{"F010"}', NULL, NULL),
+('P034', 'Phan Thị Lành',         2, 3, NULL, NULL, true,  false, '{"F012"}', '{"F010"}', NULL, NULL),
+('P035', 'Phan Thị Hồng Luân',    2, 3, NULL, NULL, true,  false, '{"F013"}', '{"F010"}', NULL, NULL),
+('P036', 'Phan Quang Linh',       1, 3, NULL, NULL, true,  false, '{"F014"}', '{"F010"}', NULL, NULL),
+('P037', 'Phan Quang Ninh',       1, 3, NULL, NULL, true,  false, '{"F015"}', '{"F010"}', NULL, NULL),
+('P038', 'Phan Thu Tình',         2, 3, NULL, NULL, true,  false, '{"F016"}', '{"F010"}', NULL, NULL),
+('P039', 'Phan Thanh Thúy',       2, 3, NULL, NULL, true,  false, '{"F017"}', '{"F010"}', NULL, NULL),
+('P040', 'Phan Quang Long',       1, 3, NULL, 2020, false, false, '{}',       '{"F010"}', NULL, NULL),
+
+-- ── Đời 3: vợ/chồng ngoại tộc ──────────────────────────────
+('P041', 'Phan Văn Hoàn',         1, 3, NULL, NULL, true,  false, '{"F011"}', '{}',       NULL, NULL),
+('P042', 'Phan Văn Hoạt',         1, 3, NULL, NULL, true,  false, '{"F012"}', '{}',       NULL, NULL),
+('P043', 'Nguyễn Văn Phước',      1, 3, NULL, NULL, true,  false, '{"F013"}', '{}',       NULL, NULL),
+('P044', 'Phan Thị Huế',          2, 3, NULL, NULL, true,  false, '{"F014"}', '{}',       NULL, NULL),
+('P045', 'Phan Thị Thơ',          2, 3, NULL, NULL, true,  false, '{"F015"}', '{}',       NULL, NULL),
+('P046', 'Leonel',                1, 3, NULL, NULL, true,  false, '{"F016"}', '{}',       NULL, NULL),
+('P047', 'Nguyễn Hoàng Tân',      1, 3, NULL, NULL, true,  false, '{"F017"}', '{}',       NULL, NULL),
+
+-- ── Đời 4: con F011 (Phan Văn Hoàn + Phan Thị Lan) ─────────
+('P048', 'Phan Đức Anh',          1, 4, NULL, NULL, true,  false, '{}',       '{"F011"}', NULL, NULL),
+('P049', 'Phan Thị Hoài Thanh',   2, 4, NULL, NULL, true,  false, '{}',       '{"F011"}', NULL, NULL),
+('P050', 'Phan Anh Tuấn',         1, 4, NULL, NULL, true,  false, '{}',       '{"F011"}', NULL, NULL),
+
+-- ── Đời 4: con F012 (Phan Văn Hoạt + Phan Thị Lành) ────────
+('P051', 'Phan Thị Minh Thu',     2, 4, NULL, NULL, true,  false, '{"F018"}', '{"F012"}', NULL, NULL),
+('P052', 'Phan Quang Thìn',       1, 4, NULL, NULL, true,  false, '{}',       '{"F012"}', NULL, NULL),
+('P053', 'Phan Quang Dũng',       1, 4, NULL, NULL, true,  false, '{}',       '{"F012"}', NULL, NULL),
+('P054', 'Phan Quang Huy',        1, 4, NULL, NULL, true,  false, '{}',       '{"F012"}', NULL, NULL),
+
+-- ── Đời 4: con F013 (Nguyễn Văn Phước + Phan Thị Hồng Luân)
+('P055', 'Nguyễn Thị Yến Nhi',    2, 4, NULL, NULL, true,  false, '{}',       '{"F013"}', NULL, NULL),
+('P056', 'Nguyễn Thúy Vy',        2, 4, NULL, NULL, true,  false, '{}',       '{"F013"}', NULL, NULL),
+
+-- ── Đời 4: con F014 (Phan Quang Linh + Phan Thị Huế) ───────
+('P057', 'Phan Thị Ngọc Ngà',     2, 4, NULL, NULL, true,  false, '{}',       '{"F014"}', NULL, NULL),
+('P058', 'Phan Trung Nguyên',      1, 4, NULL, NULL, true,  false, '{}',       '{"F014"}', NULL, NULL),
+
+-- ── Đời 4: con F015 (Phan Quang Ninh + Phan Thị Thơ) ───────
+('P059', 'Phan Thị Thảo My',      2, 4, NULL, NULL, true,  false, '{}',       '{"F015"}', NULL, NULL),
+('P060', 'Phan Thị Ngọc Ánh',     2, 4, NULL, NULL, true,  false, '{}',       '{"F015"}', NULL, NULL),
+('P061', 'Phan Sao Mai',           2, 4, NULL, NULL, true,  false, '{}',       '{"F015"}', NULL, NULL),
+('P062', 'Phan Quang Vinh',        1, 4, NULL, NULL, true,  false, '{}',       '{"F015"}', NULL, NULL),
+
+-- ── Đời 4: con F016 (Leonel + Phan Thu Tình) ────────────────
+('P063', 'Phan Khánh Linh',        2, 4, NULL, NULL, true,  false, '{}',       '{"F016"}', NULL, NULL),
+
+-- ── Đời 4: con F017 (Nguyễn Hoàng Tân + Phan Thanh Thúy) ───
+('P064', 'Nguyễn Duy Ân',          1, 4, NULL, NULL, true,  false, '{}',       '{"F017"}', NULL, NULL),
+('P065', 'Nguyễn Thúy An',         2, 4, NULL, NULL, true,  false, '{}',       '{"F017"}', NULL, NULL),
+
+-- ── Đời 4: vợ ngoại tộc ─────────────────────────────────────
+('P066', 'Nguyễn Bá Nhật',         1, 4, NULL, NULL, true,  false, '{"F018"}', '{}',       NULL, NULL),
+
+-- ── Đời 5: con F018 (Nguyễn Bá Nhật + Phan Thị Minh Thu) ───
+('P067', 'Nguyễn Bảo Long',        1, 5, NULL, NULL, true,  false, '{}',       '{"F018"}', NULL, NULL)
+
+ON CONFLICT (handle) DO NOTHING;
+
 
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║  2. FAMILIES (dữ liệu mẫu — xóa nếu dùng dữ liệu thật) ║
@@ -101,9 +173,65 @@ INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
 
 ON CONFLICT (handle) DO NOTHING;
 
+-- ── Nhánh Ô Nhiên (F010–F018, thêm từ migration 003) ────────
+
+INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
+
+-- F010: Dượng Yên + Ô Nhiên → 8 con
+('F010', 'P032', 'P031', '{"P033","P034","P035","P036","P037","P038","P039","P040"}'),
+
+-- F011: Phan Văn Hoàn + Phan Thị Lan → 3 con
+('F011', 'P041', 'P033', '{"P048","P049","P050"}'),
+
+-- F012: Phan Văn Hoạt + Phan Thị Lành → 4 con
+('F012', 'P042', 'P034', '{"P051","P052","P053","P054"}'),
+
+-- F013: Nguyễn Văn Phước + Phan Thị Hồng Luân → 2 con
+('F013', 'P043', 'P035', '{"P055","P056"}'),
+
+-- F014: Phan Quang Linh + Phan Thị Huế → 2 con
+('F014', 'P036', 'P044', '{"P057","P058"}'),
+
+-- F015: Phan Quang Ninh + Phan Thị Thơ → 4 con
+('F015', 'P037', 'P045', '{"P059","P060","P061","P062"}'),
+
+-- F016: Leonel + Phan Thu Tình → 1 con
+('F016', 'P046', 'P038', '{"P063"}'),
+
+-- F017: Nguyễn Hoàng Tân + Phan Thanh Thúy → 2 con
+('F017', 'P047', 'P039', '{"P064","P065"}'),
+
+-- F018: Nguyễn Bá Nhật + Phan Thị Minh Thu → 1 con (đời 5)
+('F018', 'P066', 'P051', '{"P067"}')
+
+ON CONFLICT (handle) DO NOTHING;
+
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  3. FAMILY_QUESTIONS (xóa / thay thế bằng câu thật)    ║
+-- ║  3. DATA UPDATES                                        ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Thêm Ô Nhiên (P031) vào danh sách con của Phạm Hướng (F001)
+UPDATE families
+SET children = array_append(children, 'P031')
+WHERE handle = 'F001'
+  AND NOT ('P031' = ANY(children));
+
+-- Điền birth_date từ birth_year (mặc định 01/01) cho người chưa có ngày cụ thể
+UPDATE people
+SET birth_date = make_date(birth_year, 1, 1)
+WHERE birth_year IS NOT NULL
+  AND birth_date IS NULL;
+
+-- Điền death_date từ death_year (mặc định 01/01) cho người chưa có ngày cụ thể
+UPDATE people
+SET death_date = make_date(death_year, 1, 1)
+WHERE death_year IS NOT NULL
+  AND death_date IS NULL;
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  4. FAMILY_QUESTIONS (xóa / thay thế bằng câu thật)    ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO family_questions (question, correct_answer, hint, is_active) VALUES
@@ -117,7 +245,7 @@ ON CONFLICT DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  4. APP_SETTINGS (giá trị mặc định — giữ lại cho prod)  ║
+-- ║  5. APP_SETTINGS (giá trị mặc định — giữ lại cho prod)  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO app_settings (key, value, description) VALUES
@@ -128,7 +256,7 @@ ON CONFLICT (key) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  5. STORAGE (tạo bucket media — giữ lại cho prod)       ║
+-- ║  6. STORAGE (tạo bucket media — giữ lại cho prod)       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

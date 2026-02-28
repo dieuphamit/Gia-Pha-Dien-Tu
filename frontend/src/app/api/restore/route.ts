@@ -23,6 +23,7 @@ export interface RestoreTableResult {
     table: string;
     total: number;
     upserted: number;
+    deleted?: number;
     error?: string;
 }
 
@@ -46,6 +47,40 @@ async function requireAdmin(request: NextRequest): Promise<{ userId: string } | 
 
     if (profile?.role !== 'admin') return null;
     return { userId: user.id };
+}
+
+// ── Delete orphans helper ─────────────────────────────────────
+// Xóa các records trong DB mà KHÔNG có trong backup (cho people + families).
+// Đảm bảo restore trả về đúng trạng thái backup, kể cả khi migration đã xóa records sai.
+
+async function deleteOrphans(
+    serviceClient: ReturnType<typeof createServiceClient>,
+    table: string,
+    keyCol: string,
+    backupKeys: string[],
+): Promise<{ deleted: number; error?: string }> {
+    if (backupKeys.length === 0) return { deleted: 0 };
+
+    const { data: currentRows, error: fetchError } = await serviceClient
+        .from(table)
+        .select(keyCol);
+
+    if (fetchError) return { deleted: 0, error: fetchError.message };
+
+    const backupSet = new Set(backupKeys);
+    const toDelete = (currentRows ?? [])
+        .map(r => (r as Record<string, string>)[keyCol])
+        .filter(h => h && !backupSet.has(h));
+
+    if (toDelete.length === 0) return { deleted: 0 };
+
+    const { error: deleteError } = await serviceClient
+        .from(table)
+        .delete()
+        .in(keyCol, toDelete);
+
+    if (deleteError) return { deleted: 0, error: deleteError.message };
+    return { deleted: toDelete.length };
 }
 
 // ── Upsert helper ─────────────────────────────────────────────
@@ -119,26 +154,62 @@ export async function POST(request: NextRequest) {
         const serviceClient = createServiceClient();
         const results: RestoreTableResult[] = [];
 
-        // 4. Restore theo thứ tự phụ thuộc (không có FK cứng nên upsert tuần tự là đủ)
-        const tablePlan: Array<{
+        // 4. Restore theo thứ tự phụ thuộc.
+        //    people + families: full replace (upsert + xóa orphans không có trong backup).
+        //    Các bảng còn lại: chỉ upsert (thêm/cập nhật, không xóa).
+
+        // ── 4a. Full-replace cho people và families ─────────────
+        const fullReplaceTables: Array<{
+            key: keyof BackupData;
+            table: string;
+            keyCol: string;
+        }> = [
+            { key: 'people', table: 'people', keyCol: 'handle' },
+            { key: 'families', table: 'families', keyCol: 'handle' },
+        ];
+
+        for (const { key, table, keyCol } of fullReplaceTables) {
+            const rows = backup[key] as Record<string, unknown>[] | undefined;
+            const handles = (rows ?? []).map(r => (r as Record<string, string>)[keyCol]).filter(Boolean);
+
+            // Upsert trước
+            const upsertResult = await upsertTable(serviceClient, table, rows ?? [], keyCol);
+            if (upsertResult.error) {
+                return NextResponse.json({
+                    ok: false,
+                    error: `Lỗi restore bảng ${table}: ${upsertResult.error}`,
+                    results,
+                }, { status: 500 });
+            }
+
+            // Xóa records không có trong backup (đảm bảo restore đúng kể cả khi migration xóa records sai)
+            const { deleted, error: deleteError } = await deleteOrphans(serviceClient, table, keyCol, handles);
+
+            results.push({
+                ...upsertResult,
+                deleted,
+                error: deleteError,
+            });
+        }
+
+        // ── 4b. Upsert-only cho các bảng còn lại ────────────────
+        const upsertOnlyTables: Array<{
             key: keyof BackupData;
             table: string;
             conflictCol: string;
         }> = [
-                { key: 'people', table: 'people', conflictCol: 'handle' },
-                { key: 'families', table: 'families', conflictCol: 'handle' },
-                { key: 'profiles', table: 'profiles', conflictCol: 'id' },
-                { key: 'posts', table: 'posts', conflictCol: 'id' },
-                { key: 'post_comments', table: 'post_comments', conflictCol: 'id' },
-                { key: 'comments', table: 'comments', conflictCol: 'id' },
-                { key: 'events', table: 'events', conflictCol: 'id' },
-                { key: 'event_rsvps', table: 'event_rsvps', conflictCol: 'id' },
-                { key: 'family_questions', table: 'family_questions', conflictCol: 'id' },
-                { key: 'contributions', table: 'contributions', conflictCol: 'id' },
-                { key: 'audit_logs', table: 'audit_logs', conflictCol: 'id' },
-            ];
+            { key: 'profiles', table: 'profiles', conflictCol: 'id' },
+            { key: 'posts', table: 'posts', conflictCol: 'id' },
+            { key: 'post_comments', table: 'post_comments', conflictCol: 'id' },
+            { key: 'comments', table: 'comments', conflictCol: 'id' },
+            { key: 'events', table: 'events', conflictCol: 'id' },
+            { key: 'event_rsvps', table: 'event_rsvps', conflictCol: 'id' },
+            { key: 'family_questions', table: 'family_questions', conflictCol: 'id' },
+            { key: 'contributions', table: 'contributions', conflictCol: 'id' },
+            { key: 'audit_logs', table: 'audit_logs', conflictCol: 'id' },
+        ];
 
-        for (const { key, table, conflictCol } of tablePlan) {
+        for (const { key, table, conflictCol } of upsertOnlyTables) {
             const rows = backup[key] as Record<string, unknown>[] | undefined;
             if (!rows || rows.length === 0) {
                 results.push({ table, total: 0, upserted: 0 });
@@ -146,15 +217,6 @@ export async function POST(request: NextRequest) {
             }
             const result = await upsertTable(serviceClient, table, rows, conflictCol);
             results.push(result);
-
-            // Stop on critical table errors
-            if (result.error && (table === 'people' || table === 'families')) {
-                return NextResponse.json({
-                    ok: false,
-                    error: `Lỗi restore bảng ${table}: ${result.error}`,
-                    results,
-                }, { status: 500 });
-            }
         }
 
         // 5. Ghi audit log

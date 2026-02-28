@@ -385,7 +385,8 @@ function RestoreSection({ userId }: { userId?: string }) {
                                     Xác nhận trước khi restore
                                 </p>
                                 <p className="text-xs text-amber-700 dark:text-amber-300">
-                                    Restore sẽ ghi đè (upsert) dữ liệu trùng khớp. Dữ liệu không có trong file backup sẽ được giữ nguyên.
+                                    Bảng <strong>people</strong> và <strong>families</strong>: ghi đè dữ liệu trùng khớp và <strong>xóa bản ghi không có trong backup</strong> (đảm bảo khớp chính xác với file backup).
+                                    Các bảng khác: chỉ thêm/cập nhật, không xóa.
                                 </p>
                                 <Button
                                     onClick={() => setState(s => ({ ...s, confirmed: true }))}
@@ -447,7 +448,10 @@ function RestoreSection({ userId }: { userId?: string }) {
                                             <span className="text-xs">{r.error}</span>
                                         ) : (
                                             <span className="text-muted-foreground text-xs">
-                                                {fmtCount(r.upserted)} / {fmtCount(r.total)} records
+                                                {fmtCount(r.upserted)}/{fmtCount(r.total)} upserted
+                                                {r.deleted != null && r.deleted > 0 && (
+                                                    <span className="text-red-500 ml-1">−{fmtCount(r.deleted)} xóa</span>
+                                                )}
                                             </span>
                                         )}
                                         {r.error

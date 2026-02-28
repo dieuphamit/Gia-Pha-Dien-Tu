@@ -5,12 +5,13 @@
 --   tables, indexes, functions, triggers, views, RLS
 -- Chạy file này TRƯỚC DML.sql
 --
--- Tables (16):
+-- Tables (17):
 --   Core     : people, families
 --   Auth     : profiles, invite_links
 --   Content  : contributions, comments, posts, post_comments
 --   Community: events, event_rsvps, family_questions, notifications
 --   Admin    : audit_logs, app_settings, bug_reports, media
+--   Infra    : birthday_notifications
 -- ============================================================
 
 
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS people (
     is_living            BOOLEAN      DEFAULT true,
     is_privacy_filtered  BOOLEAN      DEFAULT false,
     is_patrilineal       BOOLEAN      DEFAULT true,           -- true=chính tộc, false=ngoại tộc
+    is_affiliated_family BOOLEAN      DEFAULT false,          -- true=gần họ Phạm dù không mang huyết thống (admin set)
     families             TEXT[]       DEFAULT '{}',           -- family handles mà người này là cha/mẹ
     parent_families      TEXT[]       DEFAULT '{}',           -- family handles mà người này là con
     phone                TEXT,
@@ -68,9 +70,6 @@ CREATE TABLE IF NOT EXISTS people (
     created_at           TIMESTAMPTZ  DEFAULT now(),
     updated_at           TIMESTAMPTZ  DEFAULT now()
 );
-
--- Migration: thêm avatar_url nếu chưa có (safe to re-run)
-ALTER TABLE people ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 CREATE TABLE IF NOT EXISTS families (
     handle         TEXT        PRIMARY KEY,
@@ -430,7 +429,32 @@ CREATE INDEX IF NOT EXISTS idx_media_created       ON media (created_at DESC);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  14. ROW LEVEL SECURITY                                 ║
+-- ║  14. birthday_notifications (idempotency sinh nhật)     ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Tránh gửi email sinh nhật trùng nếu cron chạy lại trong ngày
+CREATE TABLE IF NOT EXISTS birthday_notifications (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    person_handle   TEXT        NOT NULL,
+    sent_year       INT         NOT NULL,
+    recipient_email TEXT        NOT NULL,
+    sent_at         TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (person_handle, sent_year, recipient_email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_birthday_notif_year
+    ON birthday_notifications (sent_year);
+
+ALTER TABLE birthday_notifications ENABLE ROW LEVEL SECURITY;
+
+-- Chỉ service role được đọc/ghi (cron job dùng service key)
+CREATE POLICY "service_role_only" ON birthday_notifications
+    USING (false)
+    WITH CHECK (false);
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  15. ROW LEVEL SECURITY                                 ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- ── people ───────────────────────────────────────────────────
