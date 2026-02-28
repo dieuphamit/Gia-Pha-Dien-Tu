@@ -42,6 +42,7 @@ interface EditForm {
     birthDate: string; // ISO DATE: "YYYY-MM-DD"
     deathDate: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
+    isAffiliatedFamily: boolean;
     phone: string;
     email: string;
     zalo: string;
@@ -96,7 +97,7 @@ export default function PersonProfilePage() {
 
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
-        birthDate: '', deathDate: '', isLiving: true,
+        birthDate: '', deathDate: '', isLiving: true, isAffiliatedFamily: false,
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
         occupation: '', company: '', education: '',
@@ -125,6 +126,7 @@ export default function PersonProfilePage() {
                     isLiving: row.is_living as boolean,
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
                     isPatrilineal: row.is_patrilineal as boolean,
+                    isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
                     families: (row.families as string[]) || [],
                     parentFamilies: (row.parent_families as string[]) || [],
                     phone: row.phone as string | undefined,
@@ -204,6 +206,7 @@ export default function PersonProfilePage() {
             birthDate: person.birthDate || '',
             deathDate: person.deathDate || '',
             isLiving: person.isLiving,
+            isAffiliatedFamily: person.isAffiliatedFamily ?? false,
             phone: person.phone || '',
             email: person.email || '',
             zalo: person.zalo || '',
@@ -288,6 +291,7 @@ export default function PersonProfilePage() {
             birthDate: form.birthDate || null,
             deathDate: form.deathDate || null,
             isLiving: form.isLiving,
+            isAffiliatedFamily: form.isAffiliatedFamily,
             phone: form.phone || null,
             email: form.email || null,
             zalo: form.zalo || null,
@@ -549,6 +553,7 @@ export default function PersonProfilePage() {
                             displayName={person.displayName}
                             gender={person.gender}
                             isPatrilineal={person.isPatrilineal}
+                            isAffiliatedFamily={person.isAffiliatedFamily}
                             isLiving={person.isLiving}
                             size="xl"
                         />
@@ -641,6 +646,7 @@ export default function PersonProfilePage() {
                                     displayName={person.displayName}
                                     gender={person.gender}
                                     isPatrilineal={person.isPatrilineal}
+                                    isAffiliatedFamily={person.isAffiliatedFamily}
                                     isLiving={person.isLiving}
                                     size="lg"
                                 />
@@ -749,6 +755,34 @@ export default function PersonProfilePage() {
                                     </Button>
                                 </div>
                             </div>
+                            {!person?.isPatrilineal && (
+                                <div className="md:col-span-2">
+                                    <label className="text-sm font-medium leading-none">Phân loại tộc</label>
+                                    <div className="flex gap-2 mt-1">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={form.isAffiliatedFamily ? 'default' : 'outline'}
+                                            className={form.isAffiliatedFamily ? 'bg-teal-500 hover:bg-teal-600 border-teal-500' : ''}
+                                            onClick={() => setForm(p => ({ ...p, isAffiliatedFamily: true }))}
+                                        >
+                                            Thân tộc
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={!form.isAffiliatedFamily ? 'default' : 'outline'}
+                                            onClick={() => setForm(p => ({ ...p, isAffiliatedFamily: false }))}
+                                        >
+                                            Ngoại tộc
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        <span className="text-teal-600 font-medium">Thân tộc</span> — có nguồn gốc gần với họ Phạm (vợ/chồng, con cháu qua kết hôn).
+                                        <span className="text-slate-500 ml-1">Ngoại tộc</span> — không liên quan trực tiếp.
+                                    </p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 

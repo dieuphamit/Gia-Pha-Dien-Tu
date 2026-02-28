@@ -26,8 +26,6 @@ interface FieldDef {
 
 const EDITABLE_FIELDS: FieldDef[] = [
     { label: 'Họ và tên',       dbColumn: 'display_name',    type: 'text',     getValue: p => p.displayName || '' },
-    { label: 'Họ',              dbColumn: 'surname',         type: 'text',     getValue: p => p.surname || '' },
-    { label: 'Tên',             dbColumn: 'first_name',      type: 'text',     getValue: p => p.firstName || '' },
     { label: 'Biệt danh',       dbColumn: 'nick_name',       type: 'text',     getValue: p => p.nickName || '' },
     { label: 'Ngày sinh',        dbColumn: 'birth_date',      type: 'date',     getValue: p => p.birthDate || '' },
     { label: 'Ngày mất',         dbColumn: 'death_date',      type: 'date',     getValue: p => p.deathDate || '' },

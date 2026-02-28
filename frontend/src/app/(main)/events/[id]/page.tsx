@@ -4,11 +4,19 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
     CalendarDays, MapPin, Clock, Users, ArrowLeft,
-    Check, X, HelpCircle, Loader2, Trash2, AlertCircle,
+    Check, X, HelpCircle, Loader2, Trash2, AlertCircle, Pencil,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -67,6 +75,124 @@ const RSVP_LABELS: Record<string, string> = {
     NOT_GOING: '❌ Không đi',
 };
 
+// ── Edit Event Dialog ───────────────────────────────────────────
+
+function EditEventDialog({
+    event,
+    open,
+    onOpenChange,
+    onSaved,
+}: {
+    event: EventDetail;
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    onSaved: () => void;
+}) {
+    const [title, setTitle] = useState(event.title);
+    const [description, setDescription] = useState(event.description ?? '');
+    const [startAt, setStartAt] = useState(
+        event.start_at ? new Date(event.start_at).toISOString().slice(0, 16) : ''
+    );
+    const [endAt, setEndAt] = useState(
+        event.end_at ? new Date(event.end_at).toISOString().slice(0, 16) : ''
+    );
+    const [location, setLocation] = useState(event.location ?? '');
+    const [type, setType] = useState(event.type);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSave = async () => {
+        if (!title.trim() || !startAt) return;
+        setSubmitting(true);
+        setError(null);
+        const { error: updateError } = await supabase
+            .from('events')
+            .update({
+                title: title.trim(),
+                description: description.trim() || null,
+                start_at: new Date(startAt).toISOString(),
+                end_at: endAt ? new Date(endAt).toISOString() : null,
+                location: location.trim() || null,
+                type,
+            })
+            .eq('id', event.id);
+
+        setSubmitting(false);
+        if (updateError) {
+            setError(`Lỗi cập nhật: ${updateError.message}`);
+        } else {
+            onOpenChange(false);
+            onSaved();
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setError(null); }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Chỉnh sửa sự kiện</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                    <Input
+                        placeholder="Tên sự kiện *"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                    />
+                    <Textarea
+                        placeholder="Mô tả"
+                        value={description}
+                        onChange={e => setDescription(e.target.value)}
+                        rows={3}
+                    />
+                    <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Ngày giờ bắt đầu *</label>
+                        <Input
+                            type="datetime-local"
+                            value={startAt}
+                            onChange={e => setStartAt(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Ngày giờ kết thúc</label>
+                        <Input
+                            type="datetime-local"
+                            value={endAt}
+                            onChange={e => setEndAt(e.target.value)}
+                        />
+                    </div>
+                    <Input
+                        placeholder="Địa điểm"
+                        value={location}
+                        onChange={e => setLocation(e.target.value)}
+                    />
+                    <select
+                        className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                        value={type}
+                        onChange={e => setType(e.target.value)}
+                    >
+                        {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v.emoji} {v.label}</option>
+                        ))}
+                    </select>
+                    {error && (
+                        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            {error}
+                        </div>
+                    )}
+                    <Button
+                        className="w-full"
+                        onClick={handleSave}
+                        disabled={!title.trim() || !startAt || submitting}
+                    >
+                        {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function EventDetailPage() {
@@ -80,6 +206,7 @@ export default function EventDetailPage() {
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
 
     // ── Fetch event (no PostgREST join) ────────────────────────
     const fetchEvent = useCallback(async () => {
@@ -214,12 +341,35 @@ export default function EventDetailPage() {
 
     return (
         <div className="max-w-2xl mx-auto space-y-6">
+            {/* Edit dialog */}
+            {canEdit && editOpen && (
+                <EditEventDialog
+                    event={event}
+                    open={editOpen}
+                    onOpenChange={setEditOpen}
+                    onSaved={fetchEvent}
+                />
+            )}
+
             {/* Nav */}
             <div className="flex items-center justify-between">
                 <Button variant="ghost" size="sm" onClick={() => router.push('/events')}>
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Quay lại
                 </Button>
+
+                <div className="flex items-center gap-2">
+                    {/* Edit button — canEdit (admin/editor) */}
+                    {canEdit && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditOpen(true)}
+                        >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Sửa
+                        </Button>
+                    )}
 
                 {/* Delete button — admin hoặc người tạo */}
                 {canDelete && (
@@ -258,6 +408,7 @@ export default function EventDetailPage() {
                         </AlertDialogContent>
                     </AlertDialog>
                 )}
+                </div>
             </div>
 
             {/* Event Detail Card */}

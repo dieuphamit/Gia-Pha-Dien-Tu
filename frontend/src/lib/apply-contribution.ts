@@ -24,6 +24,8 @@ export interface AddPersonPayload {
     currentAddress?: string;
     phone?: string;
     email?: string;
+    zalo?: string;
+    facebook?: string;
     relationHint?: string;
     spouseHandle?: string;
     avatarUrl?: string; // ảnh đại diện đã upload sẵn, set khi tạo người

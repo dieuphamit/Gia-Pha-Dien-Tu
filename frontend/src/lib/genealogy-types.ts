@@ -21,6 +21,7 @@ export interface PersonDetail {
     isLiving: boolean;
     isPrivacyFiltered: boolean;
     isPatrilineal: boolean;
+    isAffiliatedFamily?: boolean;
     families?: string[];
     parentFamilies?: string[];
     mediaCount?: number;

@@ -1099,7 +1099,9 @@ function CardContextMenu({ person, x, y, onViewDetail, onShowDescendants, onShow
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
                             ${person.isPatrilineal
                                 ? (person.gender === 1 ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700')
-                                : 'bg-slate-100 text-slate-500'}`}>
+                                : person.isAffiliatedFamily
+                                    ? 'bg-teal-100 text-teal-700'
+                                    : 'bg-slate-100 text-slate-500'}`}>
                             {person.displayName.split(' ').map(w => w[0]).join('').slice(0, 2)}
                         </div>
                         <span className="text-sm font-semibold text-slate-800 truncate max-w-[130px]">{person.displayName}</span>
@@ -1173,9 +1175,13 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
     const isFemale = node.gender === 2;
     const isDead = !node.isLiving;
     const isPatri = node.isPatrilineal;
+    const isAffiliated = !isPatri && (node.isAffiliatedFamily ?? false);
 
-    // ── Color system ──
-    const dotColor = !isPatri ? '#94a3b8' : isMale ? '#818cf8' : isFemale ? '#f472b6' : '#94a3b8';
+    // ── Color system (3 tầng: patrilineal / affiliated / ngoại tộc) ──
+    const dotColor = isPatri
+        ? (isMale ? '#818cf8' : isFemale ? '#f472b6' : '#94a3b8')
+        : isAffiliated ? '#2dd4bf'
+        : '#94a3b8';
 
     // F1: MINI zoom → just a colored dot with tooltip
     if (zoomLevel === 'mini') {
@@ -1203,17 +1209,18 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
         ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
         : node.displayName.slice(0, 2).toUpperCase();
 
-    const avatarBg = !isPatri
-        ? 'bg-stone-300 text-stone-600'
-        : isMale
+    const avatarBg = isPatri
+        ? isMale
             ? (isDead ? 'bg-indigo-300 text-indigo-800' : 'bg-indigo-400 text-white')
             : isFemale
                 ? (isDead ? 'bg-rose-300 text-rose-800' : 'bg-rose-400 text-white')
-                : 'bg-slate-300 text-slate-600';
+                : 'bg-slate-300 text-slate-600'
+        : isAffiliated
+            ? (isDead ? 'bg-teal-300 text-teal-800' : 'bg-teal-400 text-white')
+            : 'bg-stone-300 text-stone-600';
 
-    const bgClass = !isPatri
-        ? 'from-stone-50 to-stone-100 border-stone-300/80 border-dashed'
-        : isDead
+    const bgClass = isPatri
+        ? isDead
             ? (isMale
                 ? 'from-indigo-50/60 to-slate-50 border-indigo-300/60'
                 : 'from-rose-50/60 to-slate-50 border-rose-300/60')
@@ -1221,7 +1228,10 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                 ? 'from-indigo-50 to-violet-50 border-indigo-300'
                 : isFemale
                     ? 'from-rose-50 to-pink-50 border-rose-300'
-                    : 'from-slate-50 to-slate-100 border-slate-300';
+                    : 'from-slate-50 to-slate-100 border-slate-300'
+        : isAffiliated
+            ? (isDead ? 'from-teal-50/60 to-slate-50 border-teal-300/60' : 'from-teal-50 to-cyan-50 border-teal-300')
+            : 'from-stone-50 to-stone-100 border-stone-300/80 border-dashed';
 
     const glowClass = isSelected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-blue-200 shadow-lg'
         : isHighlighted ? 'ring-2 ring-amber-400 ring-offset-2'
@@ -1234,7 +1244,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
             <div
                 className={`absolute rounded-lg border bg-gradient-to-br shadow-sm transition-all duration-200
                     cursor-pointer hover:shadow-md ${bgClass} ${glowClass}
-                    ${isDead ? 'opacity-70' : ''} ${!isPatri ? 'opacity-80' : ''}`}
+                    ${isDead ? 'opacity-70' : ''} ${!isPatri ? (isAffiliated ? 'opacity-90' : 'opacity-75') : ''}`}
                 style={{ left: x, top: y, width: CARD_W, height: CARD_H }}
                 onMouseEnter={() => onHover(node.handle)}
                 onMouseLeave={() => onHover(null)}
@@ -1280,7 +1290,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
         <div
             className={`absolute rounded-xl border-[1.5px] bg-gradient-to-br shadow-sm transition-all duration-200
                 cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${bgClass} ${glowClass}
-                ${isDead ? 'opacity-70' : ''} ${!isPatri ? 'opacity-80' : ''}`}
+                ${isDead ? 'opacity-70' : ''} ${!isPatri ? (isAffiliated ? 'opacity-90' : 'opacity-75') : ''}`}
             style={{ left: x, top: y, width: CARD_W, height: CARD_H }}
             onMouseEnter={() => onHover(node.handle)}
             onMouseLeave={() => onHover(null)}
@@ -1306,7 +1316,11 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                     )}
                     {isPatri && (
                         <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500
-                            text-white text-[8px] flex items-center justify-center shadow-sm font-bold ring-1 ring-white">Phạm</span>
+                            text-white text-[8px] flex items-center justify-center shadow-sm font-bold ring-1 ring-white">P</span>
+                    )}
+                    {isAffiliated && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-gradient-to-br from-teal-300 to-cyan-400
+                            text-white text-[8px] flex items-center justify-center shadow-sm font-bold ring-1 ring-white">T</span>
                     )}
                 </div>
 
@@ -1327,7 +1341,10 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                         ) : (
                             <span className="text-[9px] text-emerald-600 font-medium">● Còn sống</span>
                         )}
-                        {!isPatri && (
+                        {isAffiliated && (
+                            <span className="text-[9px] text-teal-600 ml-0.5">· Thân tộc</span>
+                        )}
+                        {!isPatri && !isAffiliated && (
                             <span className="text-[9px] text-slate-400 ml-0.5">· Ngoại tộc</span>
                         )}
                     </div>

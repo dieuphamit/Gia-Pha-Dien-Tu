@@ -58,6 +58,8 @@ interface FormData {
     currentAddress: string;
     phone: string;
     email: string;
+    zalo: string;
+    facebook: string;
 }
 
 const INITIAL_FORM: FormData = {
@@ -71,6 +73,8 @@ const INITIAL_FORM: FormData = {
     currentAddress: '',
     phone: '',
     email: '',
+    zalo: '',
+    facebook: '',
 };
 
 // ── Sub components ─────────────────────────────────────────────
@@ -248,6 +252,29 @@ function StepInfo({
                         placeholder="example@email.com"
                         value={form.email}
                         onChange={e => onChange({ email: e.target.value })}
+                    />
+                </div>
+            </div>
+
+            {/* Zalo + Facebook */}
+            <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Zalo</label>
+                    <Input
+                        id="member-zalo"
+                        type="tel"
+                        placeholder="Số Zalo"
+                        value={form.zalo}
+                        onChange={e => onChange({ zalo: e.target.value })}
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Facebook</label>
+                    <Input
+                        id="member-facebook"
+                        placeholder="Link Facebook / Username"
+                        value={form.facebook}
+                        onChange={e => onChange({ facebook: e.target.value })}
                     />
                 </div>
             </div>
@@ -782,6 +809,8 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             isLiving: form.isLiving,
             families: [],
             parentFamilies: [],
+            zalo: form.zalo || null,
+            facebook: form.facebook || null,
         });
 
         // Upload ảnh sau khi tạo người (editor/admin → auto-published)

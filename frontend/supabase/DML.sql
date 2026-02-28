@@ -51,7 +51,7 @@ INSERT INTO people (
 ('P030', 'Phạm Đăng Hiền',          1, 3,  NULL, NULL, true,  true,  '{}',       '{"F002"}', NULL,       NULL),
 
 -- ── Đời 3: vợ/chồng ngoại tộc ──────────────────────────────
-('P015', 'Nguyễn Thị Hoài Thương',  2, 3,  NULL, NULL, true,  false, '{}',       '{}',       NULL,       NULL),
+('P015', 'Nguyễn Thị Hoài Thương',  2, 3,  NULL, NULL, true,  false, '{"F005"}', '{}',       NULL,       NULL),
 ('P016', 'Ngô Huỳnh Yến Tiên',      2, 3,  1991, NULL, true,  false, '{"F006"}', '{}',       'Japan',    'Nội Trợ'),
 ('P018', 'Nguyễn Phước Hải',        1, 3,  1970, NULL, true,  false, '{"F007"}', '{}',       'Đồng Nai', 'Bảo Vệ'),
 

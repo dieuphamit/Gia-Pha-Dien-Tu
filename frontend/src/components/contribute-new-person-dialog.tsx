@@ -26,6 +26,8 @@ interface NewPersonPayload {
     currentAddress?: string;
     phone?: string;
     email?: string;
+    zalo?: string;
+    facebook?: string;
     relationHint?: string;
     parentFamilyHandle?: string;
     childrenHandles?: string[];
@@ -50,6 +52,8 @@ export function ContributeNewPersonDialog() {
     const [address, setAddress] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
+    const [zalo, setZalo] = useState('');
+    const [facebook, setFacebook] = useState('');
     const [relationHint, setRelationHint] = useState('');
     const [peopleOptions, setPeopleOptions] = useState<Array<{ handle: string; displayName: string; generation: number; gender: number; }>>([]);
     const [familyOptions, setFamilyOptions] = useState<Array<{ handle: string; fatherName?: string; motherName?: string; label: string; }>>([]);
@@ -74,7 +78,7 @@ export function ContributeNewPersonDialog() {
         setDisplayName(''); setGender(1); setGeneration('');
         setBirthDate(''); setDeathDate(''); setIsLiving(true);
         setOccupation(''); setAddress(''); setPhone('');
-        setEmail(''); setRelationHint(''); setError(''); setSent(false);
+        setEmail(''); setZalo(''); setFacebook(''); setRelationHint(''); setError(''); setSent(false);
         setParentFamilyHandle(''); setChildrenHandles([]); setSpouseHandle('');
         setPhotoFile(null); setPhotoPreview(null);
     };
@@ -141,6 +145,8 @@ export function ContributeNewPersonDialog() {
             currentAddress: address.trim() || undefined,
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
+            zalo: zalo.trim() || undefined,
+            facebook: facebook.trim() || undefined,
             relationHint: relationHint.trim() || undefined,
             parentFamilyHandle,
             childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
@@ -276,6 +282,17 @@ export function ContributeNewPersonDialog() {
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Email</label>
                                 <Input type="email" placeholder="email@..." value={email} onChange={e => setEmail(e.target.value)} />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Zalo</label>
+                                <Input placeholder="Số Zalo" value={zalo} onChange={e => setZalo(e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Facebook</label>
+                                <Input placeholder="Link Facebook / Username" value={facebook} onChange={e => setFacebook(e.target.value)} />
                             </div>
                         </div>
 

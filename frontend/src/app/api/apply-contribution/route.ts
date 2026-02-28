@@ -174,6 +174,8 @@ async function applyAddPerson(
             current_address: payload.currentAddress?.trim() || null,
             phone: payload.phone?.trim() || null,
             email: payload.email?.trim() || null,
+            zalo: payload.zalo?.trim() || null,
+            facebook: payload.facebook?.trim() || null,
             avatar_url: payload.avatarUrl || null,
             families: [],
             parent_families: [],

@@ -22,6 +22,7 @@ export interface TreeNode {
     isLiving: boolean;
     isPrivacyFiltered: boolean;
     isPatrilineal: boolean;
+    isAffiliatedFamily?: boolean;
     families: string[];
     parentFamilies: string[];
     avatarUrl?: string;
@@ -423,7 +424,9 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
     const rootFamilies = families.filter(f => {
         const fh = f.fatherHandle ? personMap.get(f.fatherHandle) : null;
         const mh = f.motherHandle ? personMap.get(f.motherHandle) : null;
-        return (fh && !childOfAnyFamily.has(fh.handle)) || (mh && !childOfAnyFamily.has(mh.handle));
+        const fhIsRoot = !fh || !childOfAnyFamily.has(fh.handle);
+        const mhIsRoot = !mh || !childOfAnyFamily.has(mh.handle);
+        return fhIsRoot && mhIsRoot;
     });
 
     const allNodes: PositionedNode[] = [];
@@ -597,7 +600,7 @@ function assignGenerations(people: TreeNode[], families: TreeFamily[]): Map<stri
 
     function setGen(handle: string, gen: number) {
         const current = gens.get(handle);
-        if (current !== undefined && current <= gen) return;
+        if (current !== undefined && current >= gen) return;
         gens.set(handle, gen);
         const person = people.find(p => p.handle === handle);
         if (!person) return;

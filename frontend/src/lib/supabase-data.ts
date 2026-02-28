@@ -68,6 +68,7 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         isLiving: row.is_living as boolean,
         isPrivacyFiltered: row.is_privacy_filtered as boolean,
         isPatrilineal: row.is_patrilineal as boolean,
+        isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
         families: (row.families as string[]) || [],
         parentFamilies: (row.parent_families as string[]) || [],
         avatarUrl: (row.avatar_url as string | null) ?? undefined,
@@ -89,7 +90,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(): Promise<TreeNode[]> {
     const { data, error } = await supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, avatar_url')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url')
         .order('generation')
         .order('handle');
 
@@ -279,6 +280,7 @@ type PersonUpdateFields = {
     education?: string | null;
     notes?: string | null;
     biography?: string | null;
+    isAffiliatedFamily?: boolean;
 };
 
 /** Chuyển camelCase fields → snake_case DB columns. Exported for testing. */
@@ -317,6 +319,7 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.education !== undefined) dbFields.education = fields.education;
     if (fields.notes !== undefined) dbFields.notes = fields.notes;
     if (fields.biography !== undefined) dbFields.biography = fields.biography;
+    if (fields.isAffiliatedFamily !== undefined) dbFields.is_affiliated_family = fields.isAffiliatedFamily;
     return dbFields;
 }
 
@@ -372,6 +375,8 @@ export async function addPerson(person: {
     isLiving?: boolean;
     families?: string[];
     parentFamilies?: string[];
+    zalo?: string | null;
+    facebook?: string | null;
 }, actorId?: string): Promise<{ error: string | null }> {
     const birthYear = person.birthDate ? new Date(person.birthDate).getFullYear() : null;
     const deathYear = person.deathDate ? new Date(person.deathDate).getFullYear() : null;
@@ -391,6 +396,8 @@ export async function addPerson(person: {
             is_patrilineal: person.gender === 1,
             families: person.families || [],
             parent_families: person.parentFamilies || [],
+            zalo: person.zalo || null,
+            facebook: person.facebook || null,
         });
 
     if (error) {
