@@ -150,6 +150,12 @@ async function applyAddPerson(
 
     const handle = generateHandle(payload.displayName);
 
+    // Extract birth/death year from date strings if birthYear/deathYear not set
+    const birthYear = payload.birthYear ||
+        (payload.birthDate ? new Date(payload.birthDate).getFullYear() : null);
+    const deathYear = payload.deathYear ||
+        (payload.deathDate ? new Date(payload.deathDate).getFullYear() : null);
+
     const { data, error } = await serviceClient
         .from('people')
         .insert({
@@ -157,8 +163,10 @@ async function applyAddPerson(
             display_name: payload.displayName.trim(),
             gender: payload.gender ?? 1,
             generation: payload.generation,
-            birth_year: payload.birthYear || null,
-            death_year: payload.deathYear || null,
+            birth_year: birthYear || null,
+            birth_date: payload.birthDate || null,
+            death_year: deathYear || null,
+            death_date: payload.deathDate || null,
             is_living: payload.isLiving ?? true,
             is_patrilineal: (payload.gender ?? 1) === 1,
             is_privacy_filtered: false,
@@ -166,6 +174,7 @@ async function applyAddPerson(
             current_address: payload.currentAddress?.trim() || null,
             phone: payload.phone?.trim() || null,
             email: payload.email?.trim() || null,
+            avatar_url: payload.avatarUrl || null,
             families: [],
             parent_families: [],
         })
@@ -173,6 +182,14 @@ async function applyAddPerson(
         .single();
 
     if (error) return { ok: false, error: `Lỗi tạo thành viên: ${error.message}` };
+
+    // Link the avatar media record to the newly created person
+    if (payload.avatarUrl) {
+        await serviceClient
+            .from('media')
+            .update({ linked_person: handle })
+            .eq('storage_url', payload.avatarUrl);
+    }
 
     // Handle initial spouse setup
     if (payload.spouseHandle) {

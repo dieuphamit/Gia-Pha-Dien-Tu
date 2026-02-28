@@ -24,6 +24,7 @@ export interface TreeNode {
     isPatrilineal: boolean;
     families: string[];
     parentFamilies: string[];
+    avatarUrl?: string;
 }
 
 export interface TreeFamily {

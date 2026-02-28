@@ -24,6 +24,7 @@ export interface PersonDetail {
     families?: string[];
     parentFamilies?: string[];
     mediaCount?: number;
+    avatarUrl?: string;
     phone?: string;
     email?: string;
     zalo?: string;

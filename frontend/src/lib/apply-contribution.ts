@@ -17,6 +17,8 @@ export interface AddPersonPayload {
     generation: number;
     birthYear?: number;
     deathYear?: number;
+    birthDate?: string;
+    deathDate?: string;
     isLiving?: boolean;
     occupation?: string;
     currentAddress?: string;
@@ -24,6 +26,7 @@ export interface AddPersonPayload {
     email?: string;
     relationHint?: string;
     spouseHandle?: string;
+    avatarUrl?: string; // ảnh đại diện đã upload sẵn, set khi tạo người
 }
 
 export interface AddEventPayload {

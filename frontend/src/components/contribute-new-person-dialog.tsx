@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { UserPlus, Send, MessageSquarePlus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { UserPlus, Send, MessageSquarePlus, Camera, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,6 +29,7 @@ interface NewPersonPayload {
     parentFamilyHandle?: string;
     childrenHandles?: string[];
     spouseHandle?: string;
+    avatarUrl?: string; // URL ảnh đại diện (upload trước khi submit)
 }
 
 export function ContributeNewPersonDialog() {
@@ -55,6 +56,12 @@ export function ContributeNewPersonDialog() {
     const [childrenHandles, setChildrenHandles] = useState<string[]>([]);
     const [spouseHandle, setSpouseHandle] = useState('');
 
+    // Photo upload state
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+    const photoInputRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
         if (open) {
             fetchPeopleForSelect().then(setPeopleOptions);
@@ -68,6 +75,15 @@ export function ContributeNewPersonDialog() {
         setOccupation(''); setAddress(''); setPhone('');
         setEmail(''); setRelationHint(''); setError(''); setSent(false);
         setParentFamilyHandle(''); setChildrenHandles([]); setSpouseHandle('');
+        setPhotoFile(null); setPhotoPreview(null);
+    };
+
+    const handlePhotoSelect = (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        setPhotoFile(file);
+        const reader = new FileReader();
+        reader.onload = e => setPhotoPreview(e.target?.result as string);
+        reader.readAsDataURL(file);
     };
 
     const handleSubmit = async () => {
@@ -78,6 +94,39 @@ export function ContributeNewPersonDialog() {
 
         setSubmitting(true);
         setError('');
+
+        // Upload ảnh trước nếu có (photo uploaded without linked_person — will be linked after approval)
+        let uploadedAvatarUrl: string | undefined;
+        if (photoFile) {
+            setUploadingPhoto(true);
+            try {
+                const { supabase } = await import('@/lib/supabase');
+                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                const fd = new FormData();
+                fd.append('file', photoFile);
+                fd.append('title', `Ảnh - ${displayName.trim()}`);
+                const res = await fetch('/api/media/upload', {
+                    method: 'POST',
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    body: fd,
+                });
+                const json = await res.json();
+                if (res.ok) {
+                    uploadedAvatarUrl = json.storage_url;
+                } else {
+                    setError(json.error || 'Tải ảnh thất bại');
+                    setSubmitting(false);
+                    setUploadingPhoto(false);
+                    return;
+                }
+            } catch {
+                setError('Lỗi khi tải ảnh lên');
+                setSubmitting(false);
+                setUploadingPhoto(false);
+                return;
+            }
+            setUploadingPhoto(false);
+        }
 
         const payload: NewPersonPayload = {
             displayName: displayName.trim(),
@@ -94,6 +143,7 @@ export function ContributeNewPersonDialog() {
             parentFamilyHandle,
             childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
             spouseHandle: spouseHandle || undefined,
+            avatarUrl: uploadedAvatarUrl,
         };
 
         const parentFamilyLabel = familyOptions.find(f => f.handle === parentFamilyHandle)?.label || '';
@@ -301,6 +351,44 @@ export function ContributeNewPersonDialog() {
                             />
                         </div>
 
+                        {/* Photo upload */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Ảnh đại diện (tuỳ chọn)</label>
+                            <input
+                                ref={photoInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                className="hidden"
+                                onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); e.target.value = ''; }}
+                            />
+                            {photoPreview ? (
+                                <div className="relative inline-block">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={photoPreview}
+                                        alt="Preview"
+                                        className="w-20 h-20 object-cover rounded-full border-2 border-muted"
+                                    />
+                                    <button
+                                        type="button"
+                                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center"
+                                        onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    className="flex items-center gap-2 text-sm text-muted-foreground border border-dashed rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors"
+                                >
+                                    <Camera className="w-4 h-4" />
+                                    Chọn ảnh
+                                </button>
+                            )}
+                        </div>
+
                         <p className="text-[10px] text-muted-foreground bg-muted/50 rounded p-2">
                             📋 Đề xuất này sẽ được quản trị viên xem xét. Sau khi duyệt, thành viên sẽ được thêm vào gia phả.
                         </p>
@@ -312,9 +400,9 @@ export function ContributeNewPersonDialog() {
                             <Button
                                 className="flex-1"
                                 onClick={handleSubmit}
-                                disabled={submitting || !displayName.trim() || !generation || !parentFamilyHandle}
+                                disabled={submitting || uploadingPhoto || !displayName.trim() || !generation || !parentFamilyHandle}
                             >
-                                {submitting ? 'Đang gửi...' : <><Send className="w-4 h-4 mr-2" />Gửi đề xuất</>}
+                                {uploadingPhoto ? 'Đang tải ảnh...' : submitting ? 'Đang gửi...' : <><Send className="w-4 h-4 mr-2" />Gửi đề xuất</>}
                             </Button>
                         </div>
                     </div>

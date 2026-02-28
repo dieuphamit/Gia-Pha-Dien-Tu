@@ -70,6 +70,7 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         isPatrilineal: row.is_patrilineal as boolean,
         families: (row.families as string[]) || [],
         parentFamilies: (row.parent_families as string[]) || [],
+        avatarUrl: (row.avatar_url as string | null) ?? undefined,
     };
 }
 
@@ -88,7 +89,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(): Promise<TreeNode[]> {
     const { data, error } = await supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, avatar_url')
         .order('generation')
         .order('handle');
 
@@ -402,7 +403,7 @@ export async function addPerson(person: {
             entityType: 'people',
             entityId: person.handle,
             entityName: person.displayName,
-            metadata: { generation: person.generation, gender: person.gender, birthYear: person.birthYear },
+            metadata: { generation: person.generation, gender: person.gender, birthYear },
         });
     }
 

@@ -64,9 +64,13 @@ CREATE TABLE IF NOT EXISTS people (
     nick_name            TEXT,
     biography            TEXT,
     notes                TEXT,
+    avatar_url           TEXT,                                   -- ảnh đại diện chính (từ media table)
     created_at           TIMESTAMPTZ  DEFAULT now(),
     updated_at           TIMESTAMPTZ  DEFAULT now()
 );
+
+-- Migration: thêm avatar_url nếu chưa có (safe to re-run)
+ALTER TABLE people ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 CREATE TABLE IF NOT EXISTS families (
     handle         TEXT        PRIMARY KEY,

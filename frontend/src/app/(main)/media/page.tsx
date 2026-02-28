@@ -3,8 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import {
     Image as ImageIcon, Upload, Search, Check, X, Loader2, Trash2,
-    FileText, ChevronLeft, ChevronRight, Eye, Filter,
+    FileText, ChevronLeft, ChevronRight, Eye, Filter, Star, User,
 } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +27,7 @@ interface MediaItem {
     uploader_id: string | null;
     storage_url: string | null;
     media_type: string | null;
+    linked_person: string | null;
     created_at: string;
     uploader?: { display_name: string | null; email: string };
 }
@@ -69,6 +71,7 @@ export default function MediaLibraryPage() {
 
     const [preview, setPreview] = useState<MediaItem | null>(null);
     const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null);
+    const [personNameMap, setPersonNameMap] = useState<Map<string, string>>(new Map());
 
     // ── Fetch ────────────────────────────────────────────────
     const fetchMedia = useCallback(async () => {
@@ -84,7 +87,24 @@ export default function MediaLibraryPage() {
         if (search.trim()) query = query.ilike('file_name', `%${search.trim()}%`);
 
         const { data, count } = await query;
-        if (data) setItems(data);
+        if (data) {
+            setItems(data);
+            // Fetch person names for all linked_person handles in batch
+            const handles = [...new Set(data
+                .map((m: Record<string, unknown>) => m.linked_person as string | null)
+                .filter((h): h is string => !!h))];
+            if (handles.length > 0) {
+                const { data: people } = await supabase
+                    .from('people')
+                    .select('handle, display_name')
+                    .in('handle', handles);
+                if (people) {
+                    const map = new Map<string, string>();
+                    people.forEach((p: Record<string, unknown>) => map.set(p.handle as string, p.display_name as string));
+                    setPersonNameMap(map);
+                }
+            }
+        }
         if (count !== null) setTotal(count);
         setLoading(false);
     }, [tab, typeFilter, search, page]);
@@ -174,6 +194,18 @@ export default function MediaLibraryPage() {
         // nhưng gọi thêm để đảm bảo (REJECTED xóa khỏi danh sách ngay)
         fetchMedia();
         fetchQuota();
+    };
+
+    // ── Set as Avatar ─────────────────────────────────────────
+    const handleSetAvatar = async (item: MediaItem) => {
+        if (!item.linked_person) return;
+        const token = await getToken();
+        await fetch(`/api/people/${item.linked_person}/set-avatar`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mediaId: item.id }),
+        });
+        // Optionally show success feedback
     };
 
     // ── Delete ───────────────────────────────────────────────
@@ -289,10 +321,12 @@ export default function MediaLibraryPage() {
                             userId={user?.id}
                             isAdmin={isAdmin}
                             canEdit={canEdit}
+                            linkedPersonName={item.linked_person ? personNameMap.get(item.linked_person) : undefined}
                             onPreview={() => setPreview(item)}
                             onApprove={() => handleAction(item.id, 'PUBLISHED')}
                             onReject={() => handleAction(item.id, 'REJECTED')}
                             onDelete={() => handleDelete(item.id)}
+                            onSetAvatar={canEdit && item.state === 'PUBLISHED' && item.media_type === 'IMAGE' && item.linked_person ? () => handleSetAvatar(item) : undefined}
                         />
                     ))}
                 </div>
@@ -348,17 +382,19 @@ export default function MediaLibraryPage() {
 
 // ── MediaCard ─────────────────────────────────────────────────
 function MediaCard({
-    item, userId, isAdmin, canEdit,
-    onPreview, onApprove, onReject, onDelete,
+    item, userId, isAdmin, canEdit, linkedPersonName,
+    onPreview, onApprove, onReject, onDelete, onSetAvatar,
 }: {
     item: MediaItem;
     userId?: string;
     isAdmin: boolean;
     canEdit: boolean;
+    linkedPersonName?: string;
     onPreview: () => void;
     onApprove: () => void;
     onReject: () => void;
     onDelete: () => void;
+    onSetAvatar?: () => void;
 }) {
     const isOwner = item.uploader_id === userId;
     const canDelete = isAdmin || isOwner;
@@ -394,6 +430,17 @@ function MediaCard({
                 <p className="text-xs font-medium truncate" title={item.title || item.file_name}>
                     {item.title || item.file_name}
                 </p>
+                {/* Linked person info */}
+                {item.linked_person && (
+                    <Link
+                        href={`/people/${item.linked_person}`}
+                        className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <User className="w-2.5 h-2.5 flex-shrink-0" />
+                        <span className="truncate">{linkedPersonName || item.linked_person}</span>
+                    </Link>
+                )}
                 <p className="text-[10px] text-muted-foreground">
                     {formatSize(item.file_size)} · {new Date(item.created_at).toLocaleDateString('vi-VN')}
                 </p>
@@ -407,6 +454,17 @@ function MediaCard({
                                 <X className="h-2.5 w-2.5 mr-1" />Từ chối
                             </Button>
                         </>
+                    )}
+                    {onSetAvatar && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                            onClick={e => { e.stopPropagation(); onSetAvatar(); }}
+                            title="Đặt làm ảnh đại diện"
+                        >
+                            <Star className="h-2.5 w-2.5" />
+                        </Button>
                     )}
                     {canDelete && (
                         <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive ml-auto" onClick={onDelete}>

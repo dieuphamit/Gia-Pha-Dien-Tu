@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Heart, Image, FileText, History, Lock, Phone, MapPin, Briefcase, GraduationCap, Tag, MessageCircle, Pencil, Save, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Heart, Image, FileText, History, Lock, Phone, MapPin, Briefcase, GraduationCap, Tag, MessageCircle, Pencil, Save, X, Trash2, Upload, Star, ZoomIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,11 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 import { zodiacYear } from '@/lib/genealogy-types';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 import { ContributeEditPersonDialog } from '@/components/contribute-edit-person-dialog';
+import { PersonAvatar } from '@/components/person-avatar';
 import { useAuth } from '@/components/auth-provider';
 import {
     updatePerson,
@@ -70,6 +72,25 @@ export default function PersonProfilePage() {
     const [selectedChildrenHandles, setSelectedChildrenHandles] = useState<string[]>([]);
     const [allSpouseOptions, setAllSpouseOptions] = useState<FamilyOption[]>([]);
     const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
+
+    // Media state
+    interface MediaItem {
+        id: string;
+        storage_url: string;
+        thumbnail_url: string | null;
+        title: string | null;
+        state: string;
+        media_type: string;
+        linked_person: string | null;
+        created_at: string;
+    }
+    const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+    const [mediaLoading, setMediaLoading] = useState(false);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    const [mediaError, setMediaError] = useState('');
+    const mediaInputRef = useRef<HTMLInputElement>(null);
+
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, surname: '', firstName: '', nickName: '',
         birthDate: '', deathDate: '', isLiving: true,
@@ -117,6 +138,7 @@ export default function PersonProfilePage() {
                     surname: row.surname as string | undefined,
                     firstName: row.first_name as string | undefined,
                     nickName: row.nick_name as string | undefined,
+                    avatarUrl: (row.avatar_url as string | null) ?? undefined,
                 } as PersonDetail);
             }
         } catch { /* ignore */ }
@@ -141,10 +163,26 @@ export default function PersonProfilePage() {
         setFamilyInfoMap(infoMap);
     };
 
+    const fetchMedia = useCallback(async () => {
+        setMediaLoading(true);
+        try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data } = await supabase
+                .from('media')
+                .select('id, storage_url, thumbnail_url, title, state, media_type, linked_person, created_at')
+                .eq('linked_person', handle)
+                .eq('media_type', 'IMAGE')
+                .order('created_at', { ascending: false });
+            setMediaItems((data as MediaItem[]) || []);
+        } catch { /* ignore */ }
+        setMediaLoading(false);
+    }, [handle]);
+
     useEffect(() => {
         fetchPerson();
         loadFamilyInfo();
-    }, [handle]);
+        fetchMedia();
+    }, [handle, fetchMedia]);
 
     const startEdit = () => {
         if (!person) return;
@@ -383,6 +421,73 @@ export default function PersonProfilePage() {
         setRelLoading(false);
     };
 
+    const handleMediaUpload = async (file: File) => {
+        if (!file || !user) return;
+        setUploadingMedia(true);
+        setMediaError('');
+        try {
+            const token = (await (await import('@/lib/supabase')).supabase.auth.getSession()).data.session?.access_token;
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('linked_person', handle);
+            const res = await fetch('/api/media/upload', {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                body: fd,
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                setMediaError(json.error || 'Tải ảnh thất bại');
+            } else {
+                await fetchMedia();
+            }
+        } catch {
+            setMediaError('Lỗi khi tải ảnh lên');
+        }
+        setUploadingMedia(false);
+    };
+
+    const handleSetAvatar = async (mediaId: string) => {
+        if (!user) return;
+        try {
+            const token = (await (await import('@/lib/supabase')).supabase.auth.getSession()).data.session?.access_token;
+            const res = await fetch(`/api/people/${handle}/set-avatar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ mediaId }),
+            });
+            const json = await res.json();
+            if (res.ok) {
+                setPerson(p => p ? { ...p, avatarUrl: json.avatarUrl } : p);
+            } else {
+                setMediaError(json.error || 'Không đặt được ảnh đại diện');
+            }
+        } catch {
+            setMediaError('Lỗi kết nối');
+        }
+    };
+
+    const handleClearAvatar = async () => {
+        if (!user) return;
+        try {
+            const token = (await (await import('@/lib/supabase')).supabase.auth.getSession()).data.session?.access_token;
+            const res = await fetch(`/api/people/${handle}/set-avatar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ clear: true }),
+            });
+            if (res.ok) {
+                setPerson(p => p ? { ...p, avatarUrl: undefined } : p);
+            }
+        } catch { /* ignore */ }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -407,12 +512,44 @@ export default function PersonProfilePage() {
 
     return (
         <div className="space-y-6">
+            {/* Hidden file input for media upload */}
+            <input
+                ref={mediaInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload(f); e.target.value = ''; }}
+            />
+
             {/* Header */}
             <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
+
+                    {/* Avatar */}
+                    <div className="relative group flex-shrink-0">
+                        <PersonAvatar
+                            avatarUrl={person.avatarUrl}
+                            displayName={person.displayName}
+                            gender={person.gender}
+                            isPatrilineal={person.isPatrilineal}
+                            isLiving={person.isLiving}
+                            size="xl"
+                        />
+                        {canEdit && (
+                            <button
+                                className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100
+                                    transition-opacity flex items-center justify-center text-white"
+                                onClick={() => mediaInputRef.current?.click()}
+                                title="Tải ảnh lên"
+                            >
+                                <Upload className="w-6 h-6" />
+                            </button>
+                        )}
+                    </div>
+
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                             {person.displayName}
@@ -975,18 +1112,93 @@ export default function PersonProfilePage() {
                     {/* Media */}
                     <TabsContent value="media">
                         <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base">Tư liệu liên quan</CardTitle>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                                <CardTitle className="text-base">Ảnh &amp; Tư liệu</CardTitle>
+                                <div className="flex gap-2">
+                                    {canEdit && (
+                                        <Button size="sm" variant="outline" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia}>
+                                            <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                            {uploadingMedia ? 'Đang tải...' : 'Tải ảnh lên'}
+                                        </Button>
+                                    )}
+                                    {isMember && !canEdit && (
+                                        <Button size="sm" variant="outline" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia}>
+                                            <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                            {uploadingMedia ? 'Đang tải...' : 'Đề xuất ảnh'}
+                                        </Button>
+                                    )}
+                                </div>
                             </CardHeader>
                             <CardContent>
-                                <p className="text-muted-foreground text-sm">
-                                    {person.mediaCount ? `${person.mediaCount} tư liệu` : 'Chưa có tư liệu nào'}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Tính năng xem chi tiết sẽ được bổ sung trong Epic 3 (Media Library).
-                                </p>
+                                {mediaError && (
+                                    <p className="text-sm text-destructive mb-3">{mediaError}</p>
+                                )}
+                                {mediaLoading ? (
+                                    <div className="flex justify-center py-8">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                                    </div>
+                                ) : mediaItems.length === 0 ? (
+                                    <p className="text-muted-foreground text-sm py-4 text-center">Chưa có ảnh nào</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {mediaItems.map(m => (
+                                            <div key={m.id} className="relative group rounded-lg overflow-hidden border aspect-square bg-muted">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={m.thumbnail_url || m.storage_url}
+                                                    alt={m.title || 'Ảnh'}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                                {/* State badge */}
+                                                {m.state !== 'PUBLISHED' && (
+                                                    <span className={`absolute top-1 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${m.state === 'PENDING' ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'}`}>
+                                                        {m.state === 'PENDING' ? 'Chờ duyệt' : 'Từ chối'}
+                                                    </span>
+                                                )}
+                                                {/* Hover overlay */}
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                    <button
+                                                        className="p-1.5 bg-white/20 rounded-full hover:bg-white/40 transition-colors"
+                                                        onClick={() => setLightboxUrl(m.storage_url)}
+                                                        title="Xem lớn"
+                                                    >
+                                                        <ZoomIn className="w-4 h-4 text-white" />
+                                                    </button>
+                                                    {canEdit && m.state === 'PUBLISHED' && m.storage_url !== person.avatarUrl && (
+                                                        <button
+                                                            className="p-1.5 bg-white/20 rounded-full hover:bg-amber-400/80 transition-colors"
+                                                            onClick={() => handleSetAvatar(m.id)}
+                                                            title="Đặt làm ảnh đại diện"
+                                                        >
+                                                            <Star className="w-4 h-4 text-white" />
+                                                        </button>
+                                                    )}
+                                                    {canEdit && m.storage_url === person.avatarUrl && (
+                                                        <button
+                                                            className="p-1.5 bg-amber-400/80 rounded-full"
+                                                            onClick={handleClearAvatar}
+                                                            title="Bỏ ảnh đại diện"
+                                                        >
+                                                            <Star className="w-4 h-4 text-white fill-white" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
+                        {/* Lightbox */}
+                        <Dialog open={!!lightboxUrl} onOpenChange={() => setLightboxUrl(null)}>
+                            <DialogContent className="max-w-3xl p-2">
+                                {lightboxUrl && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={lightboxUrl} alt="Xem ảnh" className="w-full max-h-[80vh] object-contain rounded" />
+                                )}
+                            </DialogContent>
+                        </Dialog>
                     </TabsContent>
 
                     {/* History */}

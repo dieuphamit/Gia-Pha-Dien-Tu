@@ -25,6 +25,7 @@ export interface BookPerson {
     spouseNote?: string; // "(Ngoại tộc)"
     children: { name: string; years: string; note?: string }[];
     childIndex?: number; // thứ tự con trong gia đình (1, 2, 3...)
+    avatarUrl?: string;
 }
 
 export interface BookChapter {
@@ -213,6 +214,7 @@ export function generateBookData(
             spouseNote,
             children,
             childIndex,
+            avatarUrl: p.avatarUrl,
         });
     }
 

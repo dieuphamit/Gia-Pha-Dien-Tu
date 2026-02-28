@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { TreePine, Eye, EyeOff } from 'lucide-react';
+import { TreePine, Eye, EyeOff, Camera, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -30,6 +30,17 @@ function RegisterContent() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+
+    const handleAvatarSelect = (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        setAvatarFile(file);
+        const reader = new FileReader();
+        reader.onload = e => setAvatarPreview(e.target?.result as string);
+        reader.readAsDataURL(file);
+    };
 
     const {
         register,
@@ -96,6 +107,32 @@ function RegisterContent() {
                     role,
                     status: 'active',
                 });
+
+                // Upload avatar if provided (graceful — does not block registration)
+                if (avatarFile) {
+                    try {
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        const token = sessionData.session?.access_token;
+                        if (token) {
+                            // Upload to Supabase Storage directly as profile avatar
+                            const ext = avatarFile.name.split('.').pop() || 'jpg';
+                            const filePath = `avatars/${authData.user.id}/avatar.${ext}`;
+                            const { data: storageData } = await supabase.storage
+                                .from('media')
+                                .upload(filePath, avatarFile, { upsert: true, contentType: avatarFile.type });
+                            if (storageData) {
+                                const { data: urlData } = supabase.storage.from('media').getPublicUrl(filePath);
+                                if (urlData.publicUrl) {
+                                    await supabase.from('profiles')
+                                        .update({ avatar_url: urlData.publicUrl })
+                                        .eq('id', authData.user.id);
+                                }
+                            }
+                        }
+                    } catch {
+                        // Avatar upload failure should not block registration
+                    }
+                }
             }
 
             router.push('/');
@@ -123,6 +160,47 @@ function RegisterContent() {
                     {error && (
                         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
                     )}
+
+                    {/* Avatar upload */}
+                    <div className="flex flex-col items-center gap-2">
+                        <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleAvatarSelect(f); e.target.value = ''; }}
+                        />
+                        <div className="relative group">
+                            {avatarPreview ? (
+                                <>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={avatarPreview}
+                                        alt="Avatar preview"
+                                        className="w-20 h-20 rounded-full object-cover border-2 border-primary/30 cursor-pointer"
+                                        onClick={() => avatarInputRef.current?.click()}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center shadow"
+                                        onClick={() => { setAvatarFile(null); setAvatarPreview(null); }}
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => avatarInputRef.current?.click()}
+                                    className="w-20 h-20 rounded-full bg-muted border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 hover:bg-muted/80 transition-colors cursor-pointer"
+                                >
+                                    <Camera className="w-6 h-6 text-muted-foreground" />
+                                    <span className="text-[10px] text-muted-foreground">Ảnh đại diện</span>
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Tuỳ chọn</p>
+                    </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium" htmlFor="displayName">Tên hiển thị</label>

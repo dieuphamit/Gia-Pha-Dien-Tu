@@ -535,6 +535,17 @@ function PersonEntry({ person, index, theme: t }: { person: BookPerson; index: n
             <div className="flex items-start gap-2.5 mb-2">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full text-white text-[10px] flex items-center justify-center font-bold mt-0.5"
                     style={{ background: t.primary }}>{index}</span>
+                {/* Avatar */}
+                {person.avatarUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                        src={person.avatarUrl}
+                        alt={person.name}
+                        className="flex-shrink-0 w-10 h-12 object-cover rounded border"
+                        style={{ borderColor: t.borderLight }}
+                        loading="lazy"
+                    />
+                )}
                 <div>
                     <h3 className="text-base font-bold tracking-wide leading-tight" style={{ color: t.primary }}>{person.name}</h3>
                     <p className="text-xs mt-0.5" style={{ color: t.textMuted }}>
