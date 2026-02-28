@@ -13,6 +13,8 @@ export interface BookPerson {
     handle: string;
     name: string;
     gender: number;
+    birthDate?: string;
+    deathDate?: string;
     birthYear?: number;
     deathYear?: number;
     isLiving: boolean;
@@ -202,6 +204,8 @@ export function generateBookData(
             handle: p.handle,
             name: p.displayName,
             gender: p.gender,
+            birthDate: p.birthDate,
+            deathDate: p.deathDate,
             birthYear: p.birthYear,
             deathYear: p.deathYear,
             isLiving: p.isLiving,

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { ContributeDialog } from '@/components/contribute-dialog';
-import { Search, ZoomIn, ZoomOut, Maximize2, TreePine, Eye, Users, GitBranch, User, ArrowDownToLine, ArrowUpFromLine, Crosshair, X, ChevronDown, ChevronRight, BarChart3, Package, Link, ChevronsDownUp, ChevronsUpDown, Copy, Pencil, Save, RotateCcw, Trash2, ArrowUp, ArrowDown, GripVertical, MessageSquarePlus } from 'lucide-react';
+import { Search, ZoomIn, ZoomOut, Maximize2, TreePine, Eye, Users, GitBranch, User, ArrowDownToLine, ArrowUpFromLine, Crosshair, X, ChevronDown, ChevronRight, BarChart3, Package, Link, ChevronsDownUp, ChevronsUpDown, Copy, Pencil, Save, RotateCcw, Trash2, ArrowUp, ArrowDown, GripVertical, MessageSquarePlus, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Card, CardContent } from '@/components/ui/card';
 
 import {
@@ -1539,13 +1540,18 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     onClose: () => void;
 }) {
     const [editName, setEditName] = useState('');
-    const [editBirthYear, setEditBirthYear] = useState('');
-    const [editDeathYear, setEditDeathYear] = useState('');
+    const [editBirthDate, setEditBirthDate] = useState('');
+    const [editDeathDate, setEditDeathDate] = useState('');
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState(false);
     const [parentSearch, setParentSearch] = useState('');
     const [showParentDropdown, setShowParentDropdown] = useState(false);
     const parentSearchRef = useRef<HTMLDivElement>(null);
+
+    // Photo upload state
+    const [photoUploading, setPhotoUploading] = useState(false);
+    const [photoMsg, setPhotoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+    const photoInputRef = useRef<HTMLInputElement>(null);
 
     if (!treeData) return null;
 
@@ -1556,8 +1562,8 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
     useEffect(() => {
         if (person) {
             setEditName(person.displayName || '');
-            setEditBirthYear(person.birthYear?.toString() || '');
-            setEditDeathYear(person.deathYear?.toString() || '');
+            setEditBirthDate(person.birthDate || '');
+            setEditDeathDate(person.deathDate || '');
             setDirty(false);
             setParentSearch('');
             setShowParentDropdown(false);
@@ -1647,16 +1653,54 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
         setSaving(true);
         const fields: Record<string, unknown> = {};
         if (editName !== person.displayName) fields.displayName = editName;
-        const newBirth = editBirthYear ? parseInt(editBirthYear) : null;
-        if (newBirth !== (person.birthYear ?? null)) fields.birthYear = newBirth;
-        const newDeath = editDeathYear ? parseInt(editDeathYear) : null;
-        if (newDeath !== (person.deathYear ?? null)) fields.deathYear = newDeath;
+        const newBirthDate = editBirthDate || null;
+        if (newBirthDate !== (person.birthDate ?? null)) fields.birthDate = newBirthDate;
+        const newDeathDate = editDeathDate || null;
+        if (newDeathDate !== (person.deathDate ?? null)) fields.deathDate = newDeathDate;
         if (Object.keys(fields).length > 0) {
             onUpdatePerson(person.handle, fields);
         }
         setDirty(false);
         setSaving(false);
     };
+
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const handlePhotoUpload = useCallback(async (file: File) => {
+        if (!person) return;
+        if (file.size > 5 * 1024 * 1024) {
+            setPhotoMsg({ ok: false, text: 'Ảnh quá lớn (tối đa 5MB)' });
+            return;
+        }
+        setPhotoUploading(true);
+        setPhotoMsg(null);
+        try {
+            const { supabase } = await import('@/lib/supabase');
+            const session = (await supabase.auth.getSession()).data.session;
+            if (!session) { setPhotoMsg({ ok: false, text: 'Chưa đăng nhập' }); return; }
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('linked_person', person.handle);
+            const res = await fetch('/api/media/upload', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${session.access_token}` },
+                body: fd,
+            });
+            const json = await res.json();
+            if (res.ok) {
+                setPhotoMsg({ ok: true, text: 'Đã cập nhật ảnh!' });
+                // Cập nhật avatar_url trong tree data cục bộ
+                if (json.storage_url) {
+                    onUpdatePerson(person.handle, { avatarUrl: json.storage_url });
+                }
+            } else {
+                setPhotoMsg({ ok: false, text: json.error || 'Upload thất bại' });
+            }
+        } catch {
+            setPhotoMsg({ ok: false, text: 'Lỗi kết nối' });
+        } finally {
+            setPhotoUploading(false);
+        }
+    }, [person, onUpdatePerson]);
 
     return (
         <div className="w-72 bg-background border-l flex flex-col overflow-hidden flex-shrink-0">
@@ -1700,17 +1744,19 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                                 onChange={e => { setEditName(e.target.value); setDirty(true); }} />
                         </div>
 
-                        {/* Birth / Death Year */}
-                        <div className="flex gap-2">
-                            <div className="flex-1">
-                                <label className="text-xs text-muted-foreground">Năm sinh</label>
-                                <input type="number" className="w-full border rounded px-2 py-1 text-sm bg-background" value={editBirthYear}
-                                    onChange={e => { setEditBirthYear(e.target.value); setDirty(true); }} placeholder="—" />
+                        {/* Birth / Death Date */}
+                        <div className="space-y-2">
+                            <div>
+                                <label className="text-xs text-muted-foreground">Ngày sinh</label>
+                                <DateInput value={editBirthDate}
+                                    onChange={v => { setEditBirthDate(v); setDirty(true); }}
+                                    className="w-full" />
                             </div>
-                            <div className="flex-1">
-                                <label className="text-xs text-muted-foreground">Năm mất</label>
-                                <input type="number" className="w-full border rounded px-2 py-1 text-sm bg-background" value={editDeathYear}
-                                    onChange={e => { setEditDeathYear(e.target.value); setDirty(true); }} placeholder="—" />
+                            <div>
+                                <label className="text-xs text-muted-foreground">Ngày mất</label>
+                                <DateInput value={editDeathDate}
+                                    onChange={v => { setEditDeathDate(v); setDirty(true); }}
+                                    className="w-full" />
                             </div>
                         </div>
 
@@ -1737,6 +1783,35 @@ function EditorPanel({ selectedCard, treeData, onReorderChildren, onMoveChild, o
                                 <Save className="h-3.5 w-3.5" />{saving ? 'Đang lưu...' : 'Lưu thay đổi → Supabase'}
                             </button>
                         )}
+
+                        {/* Photo upload */}
+                        <div className="pt-1 border-t">
+                            <p className="text-xs text-muted-foreground mb-1.5">Ảnh đại diện</p>
+                            <input
+                                ref={photoInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                className="hidden"
+                                onChange={e => {
+                                    const f = e.target.files?.[0];
+                                    if (f) handlePhotoUpload(f);
+                                    e.target.value = '';
+                                }}
+                            />
+                            {photoMsg && (
+                                <p className={`text-[10px] mb-1 ${photoMsg.ok ? 'text-green-600' : 'text-destructive'}`}>
+                                    {photoMsg.text}
+                                </p>
+                            )}
+                            <button
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                onClick={() => photoInputRef.current?.click()}
+                                disabled={photoUploading}
+                            >
+                                <Camera className="h-3.5 w-3.5" />
+                                {photoUploading ? 'Đang tải...' : 'Upload ảnh'}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Children reorder */}

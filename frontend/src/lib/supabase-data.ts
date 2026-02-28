@@ -259,6 +259,7 @@ export async function updatePersonLiving(
 type PersonUpdateFields = {
     displayName?: string;
     gender?: number;
+    generation?: number;
     surname?: string | null;
     firstName?: string | null;
     nickName?: string | null;
@@ -285,6 +286,7 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     const dbFields: Record<string, unknown> = {};
     if (fields.displayName !== undefined) dbFields.display_name = fields.displayName;
     if (fields.gender !== undefined) dbFields.gender = fields.gender;
+    if (fields.generation !== undefined) dbFields.generation = fields.generation;
     if (fields.surname !== undefined) dbFields.surname = fields.surname;
     if (fields.firstName !== undefined) dbFields.first_name = fields.firstName;
     if (fields.nickName !== undefined) dbFields.nick_name = fields.nickName;

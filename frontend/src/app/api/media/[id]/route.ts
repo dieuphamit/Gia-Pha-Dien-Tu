@@ -100,6 +100,13 @@ export async function PATCH(
         return NextResponse.json({ ok: true, deleted: true });
     }
 
+    // ── Lấy thông tin media trước khi cập nhật (cần cho notification) ──
+    const { data: existingMedia } = await sc
+        .from('media')
+        .select('uploader_id, file_name, linked_person')
+        .eq('id', id)
+        .maybeSingle();
+
     // ── Các cập nhật khác (PUBLISHED, title, ...) ─────────────
     const updates: Record<string, unknown> = {};
     if (body.state !== undefined && isAdminOrEditor) updates.state = body.state;
@@ -133,6 +140,23 @@ export async function PATCH(
                 .update({ avatar_url: data.storage_url, updated_at: new Date().toISOString() })
                 .eq('handle', data.linked_person);
         }
+    }
+
+    // Gửi thông báo cho người upload khi ảnh được duyệt (không tự notify cho chính mình)
+    if (data.state === 'PUBLISHED' && existingMedia?.uploader_id && existingMedia.uploader_id !== user.id) {
+        const linkedPerson = data.linked_person ?? existingMedia.linked_person;
+        await sc.from('notifications').insert({
+            user_id: existingMedia.uploader_id,
+            type: 'media_approved',
+            title: 'Ảnh đã được duyệt',
+            body: existingMedia.file_name
+                ? `Ảnh "${existingMedia.file_name}" của bạn đã được phê duyệt và hiển thị trên gia phả.`
+                : 'Ảnh của bạn đã được phê duyệt và hiển thị trên gia phả.',
+            entity_type: 'media',
+            entity_id: id,
+            link: linkedPerson ? `/people/${linkedPerson}` : '/media',
+            is_read: false,
+        });
     }
 
     return NextResponse.json({ ok: true, media: data });

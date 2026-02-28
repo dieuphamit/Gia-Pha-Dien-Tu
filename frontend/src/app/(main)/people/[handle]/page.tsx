@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 import { zodiacYear } from '@/lib/genealogy-types';
+import { formatDateVN } from '@/components/ui/date-input';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 import { ContributeEditPersonDialog } from '@/components/contribute-edit-person-dialog';
@@ -34,6 +35,7 @@ interface FamilyOption {
 interface EditForm {
     displayName: string;
     gender: number;
+    generation: number;
     surname: string;
     firstName: string;
     nickName: string;
@@ -83,6 +85,7 @@ export default function PersonProfilePage() {
         media_type: string;
         linked_person: string | null;
         created_at: string;
+        uploader_id: string | null;
     }
     const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
     const [mediaLoading, setMediaLoading] = useState(false);
@@ -92,7 +95,7 @@ export default function PersonProfilePage() {
     const mediaInputRef = useRef<HTMLInputElement>(null);
 
     const [form, setForm] = useState<EditForm>({
-        displayName: '', gender: 1, surname: '', firstName: '', nickName: '',
+        displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
         birthDate: '', deathDate: '', isLiving: true,
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
@@ -169,11 +172,16 @@ export default function PersonProfilePage() {
             const { supabase } = await import('@/lib/supabase');
             const { data } = await supabase
                 .from('media')
-                .select('id, storage_url, thumbnail_url, title, state, media_type, linked_person, created_at')
+                .select('id, storage_url, thumbnail_url, title, state, media_type, linked_person, created_at, uploader_id')
                 .eq('linked_person', handle)
                 .eq('media_type', 'IMAGE')
                 .order('created_at', { ascending: false });
-            setMediaItems((data as MediaItem[]) || []);
+            // Privacy filter: member/viewer chỉ thấy PUBLISHED + ảnh PENDING/REJECTED của chính mình
+            const allData = (data as MediaItem[]) || [];
+            const filtered = canEdit
+                ? allData
+                : allData.filter(m => m.state === 'PUBLISHED' || m.uploader_id === user?.id);
+            setMediaItems(filtered);
         } catch { /* ignore */ }
         setMediaLoading(false);
     }, [handle]);
@@ -189,6 +197,7 @@ export default function PersonProfilePage() {
         setForm({
             displayName: person.displayName || '',
             gender: person.gender || 1,
+            generation: person.generation || 1,
             surname: person.surname || '',
             firstName: person.firstName || '',
             nickName: person.nickName || '',
@@ -272,6 +281,7 @@ export default function PersonProfilePage() {
         const result = await updatePerson(handle, {
             displayName: form.displayName || undefined,
             gender: Number(form.gender),
+            generation: Number(form.generation) || person.generation,
             surname: form.surname || null,
             firstName: form.firstName || null,
             nickName: form.nickName || null,
@@ -701,6 +711,16 @@ export default function PersonProfilePage() {
                                 </select>
                             </div>
                             <div>
+                                <label className="text-sm font-medium leading-none">Đời (số thứ tự)</label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={form.generation}
+                                    onChange={e => setForm(p => ({ ...p, generation: parseInt(e.target.value) || 1 }))}
+                                    placeholder="1"
+                                />
+                            </div>
+                            <div>
                                 <label className="text-sm font-medium leading-none">Ngày sinh</label>
                                 <Input type="date" value={form.birthDate} onChange={set('birthDate')} max={new Date().toISOString().split('T')[0]} />
                             </div>
@@ -1008,12 +1028,12 @@ export default function PersonProfilePage() {
                                 <InfoRow label="Tên" value={person.firstName || '—'} />
                                 <InfoRow label="Giới tính" value={genderLabel} />
                                 {person.nickName && <InfoRow label="Tên thường gọi" value={person.nickName} />}
-                                <InfoRow label="Ngày sinh" value={person.birthDate ? new Date(person.birthDate).toLocaleDateString('vi-VN') : (person.birthYear ? `${person.birthYear}` : '—')} />
+                                <InfoRow label="Ngày sinh" value={person.birthDate ? formatDateVN(person.birthDate) : (person.birthYear ? `${person.birthYear}` : '—')} />
                                 {(person.birthDate || person.birthYear) && <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthDate ? new Date(person.birthDate).getFullYear() : person.birthYear) || '—'} />}
                                 <InfoRow label="Nơi sinh" value={person.birthPlace || '—'} />
                                 {!person.isLiving && (
                                     <>
-                                        <InfoRow label="Ngày mất" value={person.deathDate ? new Date(person.deathDate).toLocaleDateString('vi-VN') : (person.deathYear ? `${person.deathYear}` : '—')} />
+                                        <InfoRow label="Ngày mất" value={person.deathDate ? formatDateVN(person.deathDate) : (person.deathYear ? `${person.deathYear}` : '—')} />
                                         <InfoRow label="Nơi mất" value={person.deathPlace || '—'} />
                                     </>
                                 )}

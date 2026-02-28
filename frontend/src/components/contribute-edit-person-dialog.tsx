@@ -5,6 +5,7 @@ import { Pencil, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { DateInput, formatDateVN } from '@/components/ui/date-input';
 import {
     Dialog,
     DialogContent,
@@ -170,7 +171,9 @@ export function ContributeEditPersonDialog({ person }: Props) {
                             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground min-h-[36px]">
                                 {selectedField.type === 'boolean'
                                     ? (currentValue === 'true' ? 'Còn sống' : 'Đã mất')
-                                    : (currentValue || <span className="italic">(chưa có)</span>)
+                                    : selectedField.type === 'date'
+                                        ? (formatDateVN(currentValue) || <span className="italic">(chưa có)</span>)
+                                        : (currentValue || <span className="italic">(chưa có)</span>)
                                 }
                             </div>
                         </div>
@@ -194,6 +197,8 @@ export function ContributeEditPersonDialog({ person }: Props) {
                                     <option value="true">Còn sống</option>
                                     <option value="false">Đã mất</option>
                                 </select>
+                            ) : selectedField.type === 'date' ? (
+                                <DateInput value={newValue} onChange={setNewValue} className="w-full" />
                             ) : (
                                 <Input
                                     type={selectedField.type}

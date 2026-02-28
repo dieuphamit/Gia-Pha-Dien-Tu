@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
     User, Mail, Save, CheckCircle2, AlertCircle,
     Phone, MapPin, Briefcase, Shield,
+    Camera, Loader2, Clock, ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { PersonAvatar } from '@/components/person-avatar';
 
 // Kiểu mở rộng — bao gồm các cột DB mà auth-provider chưa khai báo
 interface ExtendedProfile {
@@ -23,6 +26,15 @@ interface ExtendedProfile {
     phone?: string | null;
     address?: string | null;
     occupation?: string | null;
+    person_handle?: string | null;
+}
+
+interface PersonData {
+    display_name: string;
+    avatar_url: string | null;
+    gender: number;
+    is_living: boolean;
+    is_patrilineal: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -36,6 +48,8 @@ const ROLE_COLORS: Record<string, string> = {
     editor: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     member: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
 };
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default function ProfilePage() {
     const { profile: rawProfile, refreshProfile, loading, isLoggedIn } = useAuth();
@@ -51,6 +65,14 @@ export default function ProfilePage() {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Family tree photo section
+    const [personData, setPersonData] = useState<PersonData | null>(null);
+    const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+    const [photoError, setPhotoError] = useState<string | null>(null);
+    const [photoSuccess, setPhotoSuccess] = useState(false);
+    const photoInputRef = useRef<HTMLInputElement>(null);
+
     // Redirect nếu chưa đăng nhập
     useEffect(() => {
         if (!loading && !isLoggedIn) router.replace('/login');
@@ -60,12 +82,41 @@ export default function ProfilePage() {
     useEffect(() => {
         if (profile) {
             setDisplayName(profile.display_name || '');
-            // Các trường mở rộng
             setPhone(profile.phone || '');
             setAddress(profile.address || '');
             setOccupation(profile.occupation || '');
         }
     }, [profile]);
+
+    // Fetch dữ liệu người trong cây gia phả khi profile.person_handle được set
+    useEffect(() => {
+        if (!profile?.person_handle) return;
+
+        const handle = profile.person_handle;
+
+        async function fetchPersonData() {
+            const { data } = await supabase
+                .from('people')
+                .select('display_name, avatar_url, gender, is_living, is_patrilineal')
+                .eq('handle', handle)
+                .maybeSingle();
+            if (data) setPersonData(data as PersonData);
+        }
+
+        async function fetchPendingCount() {
+            if (!profile?.id) return;
+            const { count } = await supabase
+                .from('media')
+                .select('id', { count: 'exact', head: true })
+                .eq('linked_person', handle)
+                .eq('uploader_id', profile.id)
+                .eq('state', 'PENDING');
+            setPendingPhotoCount(count ?? 0);
+        }
+
+        fetchPersonData();
+        fetchPendingCount();
+    }, [profile?.person_handle, profile?.id]);
 
     const handleSave = async () => {
         if (!profile) return;
@@ -96,6 +147,56 @@ export default function ProfilePage() {
             setTimeout(() => setSuccess(false), 3000);
         }
         setSaving(false);
+    };
+
+    const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !profile?.person_handle || !profile?.id) return;
+
+        // Reset input để cho phép chọn lại cùng file
+        e.target.value = '';
+
+        if (file.size > MAX_IMAGE_SIZE) {
+            setPhotoError('Ảnh quá lớn. Giới hạn 5MB.');
+            return;
+        }
+
+        setUploadingPhoto(true);
+        setPhotoError(null);
+        setPhotoSuccess(false);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                setPhotoError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('linked_person', profile.person_handle);
+
+            const res = await fetch('/api/media/upload', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${session.access_token}` },
+                body: formData,
+            });
+
+            const result = await res.json();
+            if (!res.ok) {
+                setPhotoError(result.error || 'Upload thất bại.');
+                return;
+            }
+
+            // Cập nhật số ảnh đang chờ
+            setPendingPhotoCount(prev => prev + 1);
+            setPhotoSuccess(true);
+            setTimeout(() => setPhotoSuccess(false), 4000);
+        } catch {
+            setPhotoError('Lỗi kết nối. Vui lòng thử lại.');
+        } finally {
+            setUploadingPhoto(false);
+        }
     };
 
     if (loading) {
@@ -155,6 +256,99 @@ export default function ProfilePage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Family Tree Photo Card — chỉ hiển thị khi person_handle được link */}
+            {profile.person_handle && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Ảnh gia phả</CardTitle>
+                        <CardDescription>
+                            Đề xuất ảnh cho hồ sơ của bạn trong cây gia phả. Ảnh sẽ hiển thị sau khi được admin duyệt.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-4">
+                            {/* Avatar */}
+                            {personData ? (
+                                <PersonAvatar
+                                    avatarUrl={personData.avatar_url}
+                                    displayName={personData.display_name}
+                                    gender={personData.gender}
+                                    isPatrilineal={personData.is_patrilineal}
+                                    isLiving={personData.is_living}
+                                    size="lg"
+                                />
+                            ) : (
+                                <div className="h-20 w-20 rounded-full bg-muted animate-pulse" />
+                            )}
+
+                            <div className="flex-1 min-w-0 space-y-2">
+                                {personData && (
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-semibold text-sm">{personData.display_name}</p>
+                                        <Link
+                                            href={`/people/${profile.person_handle}`}
+                                            className="text-muted-foreground hover:text-foreground transition-colors"
+                                            title="Xem hồ sơ"
+                                        >
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </Link>
+                                    </div>
+                                )}
+
+                                {pendingPhotoCount > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md px-2.5 py-1.5">
+                                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                                        {pendingPhotoCount === 1
+                                            ? 'Có 1 ảnh đang chờ admin duyệt'
+                                            : `Có ${pendingPhotoCount} ảnh đang chờ admin duyệt`
+                                        }
+                                    </div>
+                                )}
+
+                                {photoError && (
+                                    <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 rounded-md px-2.5 py-1.5">
+                                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                        {photoError}
+                                    </div>
+                                )}
+
+                                {photoSuccess && (
+                                    <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 rounded-md px-2.5 py-1.5">
+                                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                        Đã gửi ảnh! Admin sẽ duyệt sớm.
+                                    </div>
+                                )}
+
+                                <input
+                                    ref={photoInputRef}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp,image/gif"
+                                    className="hidden"
+                                    onChange={handlePhotoSelect}
+                                />
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    disabled={uploadingPhoto}
+                                >
+                                    {uploadingPhoto ? (
+                                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                    ) : (
+                                        <Camera className="h-3.5 w-3.5 mr-1.5" />
+                                    )}
+                                    Đề xuất ảnh mới
+                                </Button>
+                            </div>
+                        </div>
+
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            * Ảnh sẽ hiển thị trên cây gia phả, sách gia phả và trang thành viên sau khi được admin phê duyệt. Tối đa 5MB mỗi ảnh.
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Edit Profile Card */}
             <Card>

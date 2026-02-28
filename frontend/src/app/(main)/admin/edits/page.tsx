@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth-provider';
 import { useRouter } from 'next/navigation';
 import { insertAuditLog } from '@/lib/supabase-data';
+import { formatDateVN } from '@/components/ui/date-input';
 
 interface Contribution {
     id: string;
@@ -90,15 +91,16 @@ function ContributionValuePreview({ contribution }: { contribution: Contribution
 
     // ── Thêm thành viên ──────────────────────────────────────
     if (contribution.field_name === 'add_person') {
-        const p = parsed as { displayName?: string; gender?: number; generation?: number; birthYear?: number; deathYear?: number; isLiving?: boolean; occupation?: string; currentAddress?: string; phone?: string; email?: string; relationHint?: string };
+        const p = parsed as { displayName?: string; gender?: number; generation?: number; birthDate?: string; deathDate?: string; birthYear?: number; deathYear?: number; isLiving?: boolean; occupation?: string; currentAddress?: string; phone?: string; email?: string; relationHint?: string };
+        const fmtDate = (d?: string, y?: number) => d ? formatDateVN(d) : (y ? `${y}` : null);
         return (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
                 <p className="text-xs text-muted-foreground">Thêm thành viên mới vào gia phả</p>
                 <p className="text-sm font-semibold">{p.displayName} <span className="font-normal text-muted-foreground text-xs">— {p.gender === 1 ? 'Nam' : 'Nữ'}, đời {p.generation}</span></p>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                    {p.birthYear && <span>Sinh {p.birthYear}</span>}
-                    {p.deathYear && <span>Mất {p.deathYear}</span>}
-                    {!p.deathYear && <span>{p.isLiving ? 'Còn sống' : 'Đã mất'}</span>}
+                    {fmtDate(p.birthDate, p.birthYear) && <span>Sinh {fmtDate(p.birthDate, p.birthYear)}</span>}
+                    {fmtDate(p.deathDate, p.deathYear) && <span>Mất {fmtDate(p.deathDate, p.deathYear)}</span>}
+                    {!p.deathDate && !p.deathYear && <span>{p.isLiving ? 'Còn sống' : 'Đã mất'}</span>}
                     {p.occupation && <span>• {p.occupation}</span>}
                     {p.currentAddress && <span>• {p.currentAddress}</span>}
                     {p.phone && <span>• SĐT: {p.phone}</span>}

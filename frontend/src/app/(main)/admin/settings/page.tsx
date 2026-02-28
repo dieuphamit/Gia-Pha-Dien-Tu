@@ -22,7 +22,7 @@ const FEATURE_FLAGS: FeatureFlag[] = [
     {
         key: 'feature_media_enabled',
         label: 'Thư viện hình ảnh & tài liệu',
-        description: 'Cho phép thành viên xem và tải lên ảnh, tài liệu. Khi tắt, mục "Thư viện" ẩn khỏi menu.',
+        description: 'Cho phép thành viên xem và tải lên ảnh, tài liệu. Khi tắt, mục "Thư viện" ẩn với thành viên (admin vẫn thấy để quản lý).',
         icon: Image,
     },
 ];

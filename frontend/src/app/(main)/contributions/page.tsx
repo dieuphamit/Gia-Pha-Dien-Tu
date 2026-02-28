@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth-provider';
 import { useRouter } from 'next/navigation';
 import { fetchMyContributions, type Contribution } from '@/lib/supabase-data';
+import { formatDateVN } from '@/components/ui/date-input';
 import { ContributeQuizQuestionDialog } from '@/components/contribute-quiz-question-dialog';
 
 type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected';
@@ -239,12 +240,13 @@ function ContributionPreview({ contribution }: { contribution: Contribution }) {
     }
 
     if (contribution.field_name === 'add_person') {
-        const p = parsed as { displayName?: string; generation?: number; birthYear?: number; gender?: number };
+        const p = parsed as { displayName?: string; generation?: number; birthDate?: string; birthYear?: number; gender?: number };
+        const birthDisplay = p.birthDate ? formatDateVN(p.birthDate) : (p.birthYear ? `${p.birthYear}` : null);
         return (
             <div className="text-xs bg-muted/50 rounded px-2 py-1.5">
                 <span className="font-medium">{p.displayName}</span>
                 <span className="text-muted-foreground ml-1">
-                    — {p.gender === 1 ? 'Nam' : 'Nữ'}, đời {p.generation}{p.birthYear ? `, sinh ${p.birthYear}` : ''}
+                    — {p.gender === 1 ? 'Nam' : 'Nữ'}, đời {p.generation}{birthDisplay ? `, sinh ${birthDisplay}` : ''}
                 </span>
             </div>
         );

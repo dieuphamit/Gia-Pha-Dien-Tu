@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Send, MessageSquarePlus, Camera, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import {
     Dialog,
     DialogContent,
@@ -238,21 +239,11 @@ export function ContributeNewPersonDialog() {
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Ngày sinh</label>
-                                <Input
-                                    type="date"
-                                    value={birthDate}
-                                    onChange={e => setBirthDate(e.target.value)}
-                                    max={new Date().toISOString().split('T')[0]}
-                                />
+                                <DateInput value={birthDate} onChange={setBirthDate} className="w-full" />
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Ngày mất</label>
-                                <Input
-                                    type="date"
-                                    value={deathDate}
-                                    onChange={e => setDeathDate(e.target.value)}
-                                    max={new Date().toISOString().split('T')[0]}
-                                />
+                                <DateInput value={deathDate} onChange={setDeathDate} className="w-full" />
                             </div>
                         </div>
 

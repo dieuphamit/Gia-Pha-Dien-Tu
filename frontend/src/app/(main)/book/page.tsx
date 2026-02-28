@@ -5,6 +5,7 @@ import { Printer, ArrowLeft, BookOpen, Eye, Palette, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { fetchTreeData } from '@/lib/supabase-data';
 import { generateBookData, type BookData, type BookPerson, type BookChapter } from '@/lib/book-generator';
+import { formatDateVN } from '@/components/ui/date-input';
 import type { TreeNode, TreeFamily } from '@/lib/tree-layout';
 import Link from 'next/link';
 
@@ -525,8 +526,11 @@ function ChapterContent({ chapter, theme: t, members, startIndex, showHeader }: 
 }
 
 function PersonEntry({ person, index, theme: t }: { person: BookPerson; index: number; theme: Theme }) {
-    const years = person.birthYear
-        ? `${person.birthYear}${person.deathYear ? ` – ${person.deathYear}` : person.isLiving ? ' – nay' : ''}`
+    const fmtD = (d?: string, y?: number) => d ? formatDateVN(d) : (y ? `${y}` : null);
+    const birthStr = fmtD(person.birthDate, person.birthYear);
+    const deathStr = fmtD(person.deathDate, person.deathYear);
+    const years = birthStr
+        ? `${birthStr}${deathStr ? ` – ${deathStr}` : person.isLiving ? ' – nay' : ''}`
         : '—';
     const isMale = person.gender === 1;
 
@@ -550,7 +554,7 @@ function PersonEntry({ person, index, theme: t }: { person: BookPerson; index: n
                     <h3 className="text-base font-bold tracking-wide leading-tight" style={{ color: t.primary }}>{person.name}</h3>
                     <p className="text-xs mt-0.5" style={{ color: t.textMuted }}>
                         {years}
-                        {!person.isLiving && person.deathYear && ' · Đã mất'}
+                        {!person.isLiving && (person.deathDate || person.deathYear) && ' · Đã mất'}
                         {person.isLiving && ' · Còn sống'}
                     </p>
                 </div>

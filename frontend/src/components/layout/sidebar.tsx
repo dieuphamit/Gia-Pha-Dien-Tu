@@ -248,7 +248,7 @@ export function Sidebar() {
             {/* Navigation */}
             <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
                 {navItems
-                    .filter(item => item.href !== '/media' || featureMedia)
+                    .filter(item => item.href !== '/media' || featureMedia || isAdmin)
                     .map((item) => {
                         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
                         const badge = (item.href === '/media' && canEdit) ? pendingMediaCount : 0;

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     UserPlus, ArrowRight, ArrowLeft, Check,
-    Users, GitMerge, SkipForward, Loader2, X,
+    Users, GitMerge, SkipForward, Loader2, X, Camera,
 } from 'lucide-react';
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -109,13 +111,24 @@ function StepInfo({
     onChange,
     onNext,
     loading,
+    avatarPreview,
+    onPhotoChange,
 }: {
     form: FormData;
     onChange: (f: Partial<FormData>) => void;
     onNext: () => void;
     loading: boolean;
+    avatarPreview: string | null;
+    onPhotoChange: (file: File | null) => void;
 }) {
+    const photoInputRef = useRef<HTMLInputElement>(null);
     const isValid = form.displayName.trim().length >= 2;
+
+    const handlePhotoSelect = (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        if (file.size > MAX_IMAGE_SIZE) { onPhotoChange(null); return; }
+        onPhotoChange(file);
+    };
 
     return (
         <div className="space-y-4">
@@ -237,6 +250,60 @@ function StepInfo({
                         onChange={e => onChange({ email: e.target.value })}
                     />
                 </div>
+            </div>
+
+            {/* Ảnh đại diện */}
+            <div className="space-y-1.5">
+                <label className="text-sm font-medium">Ảnh đại diện (tuỳ chọn)</label>
+                <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) handlePhotoSelect(f);
+                        e.target.value = '';
+                    }}
+                />
+                {avatarPreview ? (
+                    <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={avatarPreview}
+                            alt="Preview"
+                            className="w-16 h-16 rounded-full object-cover border-2 border-muted shadow-sm"
+                        />
+                        <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Ảnh đã chọn</p>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    className="text-xs text-primary underline"
+                                    onClick={() => photoInputRef.current?.click()}
+                                >
+                                    Đổi ảnh
+                                </button>
+                                <button
+                                    type="button"
+                                    className="text-xs text-destructive underline"
+                                    onClick={() => onPhotoChange(null)}
+                                >
+                                    Xoá
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="flex items-center gap-2 text-sm text-muted-foreground border border-dashed rounded-lg px-4 py-2.5 hover:bg-muted/50 hover:border-primary/50 transition-colors w-full"
+                    >
+                        <Camera className="w-4 h-4 shrink-0" />
+                        Chọn ảnh (JPG, PNG, WebP — tối đa 5MB)
+                    </button>
+                )}
             </div>
 
             <Button
@@ -628,6 +695,8 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
     const [families, setFamilies] = useState<FamilyOption[]>([]);
     const [people, setPeople] = useState<PersonOption[]>([]);
     const [loadingOptions, setLoadingOptions] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
     // Load families + people for dropdowns when dialog opens
     useEffect(() => {
@@ -647,6 +716,19 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
         setCreatedHandle('');
         setDoneMessage('');
         setCreateError(null);
+        setAvatarFile(null);
+        setAvatarPreview(null);
+    }, []);
+
+    const handlePhotoChange = useCallback((file: File | null) => {
+        setAvatarFile(file);
+        if (!file) {
+            setAvatarPreview(null);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => setAvatarPreview(e.target?.result as string);
+        reader.readAsDataURL(file);
     }, []);
 
     const handleClose = useCallback(() => {
@@ -701,8 +783,30 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             families: [],
             parentFamilies: [],
         });
+
+        // Upload ảnh sau khi tạo người (editor/admin → auto-published)
+        if (!result.error && avatarFile) {
+            try {
+                const { supabase } = await import('@/lib/supabase');
+                const session = (await supabase.auth.getSession()).data.session;
+                if (session) {
+                    const fd = new FormData();
+                    fd.append('file', avatarFile);
+                    fd.append('linked_person', handle);
+                    fd.append('title', `Ảnh - ${form.displayName.trim()}`);
+                    await fetch('/api/media/upload', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${session.access_token}` },
+                        body: fd,
+                    });
+                }
+            } catch {
+                // Không block việc tạo thành viên nếu upload ảnh thất bại
+            }
+        }
+
         return { error: result.error || undefined, handle };
-    }, [form, createdHandle]);
+    }, [form, createdHandle, avatarFile]);
 
     const handleDone = useCallback((message: string) => {
         setDoneMessage(message);
@@ -752,6 +856,8 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         onChange={handleFormChange}
                         onNext={handleNext}
                         loading={creating}
+                        avatarPreview={avatarPreview}
+                        onPhotoChange={handlePhotoChange}
                     />
                 )}
 
