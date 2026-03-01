@@ -69,7 +69,7 @@ async function deleteOrphans(
 
     const backupSet = new Set(backupKeys);
     const toDelete = (currentRows ?? [])
-        .map(r => (r as Record<string, string>)[keyCol])
+        .map(r => (r as unknown as Record<string, string>)[keyCol])
         .filter(h => h && !backupSet.has(h));
 
     if (toDelete.length === 0) return { deleted: 0 };
