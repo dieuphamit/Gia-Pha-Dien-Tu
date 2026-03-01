@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { UserPlus, Send, MessageSquarePlus, Camera, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +44,6 @@ export function ContributeNewPersonDialog() {
 
     const [displayName, setDisplayName] = useState('');
     const [gender, setGender] = useState(1);
-    const [generation, setGeneration] = useState<number | ''>('');
     const [birthDate, setBirthDate] = useState('');
     const [deathDate, setDeathDate] = useState('');
     const [isLiving, setIsLiving] = useState(true);
@@ -56,7 +55,7 @@ export function ContributeNewPersonDialog() {
     const [facebook, setFacebook] = useState('');
     const [relationHint, setRelationHint] = useState('');
     const [peopleOptions, setPeopleOptions] = useState<Array<{ handle: string; displayName: string; generation: number; gender: number; }>>([]);
-    const [familyOptions, setFamilyOptions] = useState<Array<{ handle: string; fatherName?: string; motherName?: string; label: string; }>>([]);
+    const [familyOptions, setFamilyOptions] = useState<Array<{ handle: string; fatherName?: string; motherName?: string; label: string; parentGeneration?: number; }>>([]);
     const [parentFamilyHandle, setParentFamilyHandle] = useState('');
     const [childrenHandles, setChildrenHandles] = useState<string[]>([]);
     const [spouseHandle, setSpouseHandle] = useState('');
@@ -67,6 +66,13 @@ export function ContributeNewPersonDialog() {
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const photoInputRef = useRef<HTMLInputElement>(null);
 
+    // Auto-compute generation from selected parent family
+    const computedGeneration = useMemo(() => {
+        if (!parentFamilyHandle) return undefined;
+        const fam = familyOptions.find(f => f.handle === parentFamilyHandle);
+        return fam?.parentGeneration != null ? fam.parentGeneration + 1 : undefined;
+    }, [parentFamilyHandle, familyOptions]);
+
     useEffect(() => {
         if (open) {
             fetchPeopleForSelect().then(setPeopleOptions);
@@ -75,7 +81,7 @@ export function ContributeNewPersonDialog() {
     }, [open]);
 
     const reset = () => {
-        setDisplayName(''); setGender(1); setGeneration('');
+        setDisplayName(''); setGender(1);
         setBirthDate(''); setDeathDate(''); setIsLiving(true);
         setOccupation(''); setAddress(''); setPhone('');
         setEmail(''); setZalo(''); setFacebook(''); setRelationHint(''); setError(''); setSent(false);
@@ -94,8 +100,8 @@ export function ContributeNewPersonDialog() {
 
     const handleSubmit = async () => {
         if (!displayName.trim()) { setError('Vui lòng nhập họ tên'); return; }
-        if (!generation) { setError('Vui lòng nhập đời thứ'); return; }
         if (!parentFamilyHandle) { setError('Vui lòng chọn gia đình cha/mẹ'); return; }
+        if (computedGeneration == null) { setError('Không thể tính đời từ gia đình này. Vui lòng liên hệ admin.'); return; }
         if (!user) { setError('Bạn cần đăng nhập'); return; }
 
         setSubmitting(true);
@@ -137,7 +143,7 @@ export function ContributeNewPersonDialog() {
         const payload: NewPersonPayload = {
             displayName: displayName.trim(),
             gender,
-            generation: Number(generation),
+            generation: computedGeneration,
             birthDate: birthDate || undefined,
             deathDate: deathDate || undefined,
             isLiving,
@@ -218,28 +224,47 @@ export function ContributeNewPersonDialog() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground">Giới tính</label>
-                                <select
-                                    value={gender}
-                                    onChange={e => setGender(Number(e.target.value))}
-                                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
-                                >
-                                    <option value={1}>Nam</option>
-                                    <option value={2}>Nữ</option>
-                                </select>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground">Đời thứ *</label>
-                                <Input
-                                    type="number"
-                                    placeholder="VD: 5"
-                                    value={generation}
-                                    onChange={e => setGeneration(e.target.value ? Number(e.target.value) : '')}
-                                    min={1}
-                                />
-                            </div>
+                        {/* Gia đình cha/mẹ — đặt lên trên để tự động tính đời */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Gia đình cha/mẹ *</label>
+                            <select
+                                value={parentFamilyHandle}
+                                onChange={e => setParentFamilyHandle(e.target.value)}
+                                className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                            >
+                                <option value="">-- Chọn gia đình cha/mẹ --</option>
+                                {familyOptions.map(f => (
+                                    <option key={f.handle} value={f.handle}>
+                                        {f.label}
+                                    </option>
+                                ))}
+                            </select>
+                            {/* Hiển thị đời tự động tính */}
+                            {parentFamilyHandle && (
+                                computedGeneration != null ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Đời thứ:{' '}
+                                        <span className="font-semibold text-foreground">{computedGeneration}</span>
+                                        <span className="ml-1 text-teal-600">(tự động tính)</span>
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-amber-600">
+                                        Không thể tính đời từ gia đình này. Vui lòng liên hệ admin.
+                                    </p>
+                                )
+                            )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Giới tính</label>
+                            <select
+                                value={gender}
+                                onChange={e => setGender(Number(e.target.value))}
+                                className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                            >
+                                <option value={1}>Nam</option>
+                                <option value={2}>Nữ</option>
+                            </select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -297,22 +322,6 @@ export function ContributeNewPersonDialog() {
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-muted-foreground">Gia đình cha/mẹ (Bắt buộc) *</label>
-                            <select
-                                value={parentFamilyHandle}
-                                onChange={e => setParentFamilyHandle(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm bg-background"
-                            >
-                                <option value="">-- Chọn gia đình cha/mẹ --</option>
-                                {familyOptions.map(f => (
-                                    <option key={f.handle} value={f.handle}>
-                                        {f.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="space-y-1.5">
                             <label className="text-xs font-medium text-muted-foreground">Con cái (Tùy chọn - Nhấn Ctrl/Cmd để chọn nhiều)</label>
                             <select
                                 multiple
@@ -340,7 +349,7 @@ export function ContributeNewPersonDialog() {
                             >
                                 <option value="">-- Chưa có / Không chọn --</option>
                                 {peopleOptions
-                                    .filter(p => generation && p.generation <= Number(generation) && p.gender !== gender && p.gender !== 0 && gender !== 0)
+                                    .filter(p => computedGeneration != null && p.generation <= computedGeneration && p.gender !== gender && p.gender !== 0 && gender !== 0)
                                     .map(p => (
                                         <option key={p.handle} value={p.handle}>
                                             {p.displayName} (Đời {p.generation}) - {p.handle}
@@ -409,7 +418,7 @@ export function ContributeNewPersonDialog() {
                             <Button
                                 className="flex-1"
                                 onClick={handleSubmit}
-                                disabled={submitting || uploadingPhoto || !displayName.trim() || !generation || !parentFamilyHandle}
+                                disabled={submitting || uploadingPhoto || !displayName.trim() || !parentFamilyHandle || computedGeneration == null}
                             >
                                 {uploadingPhoto ? 'Đang tải ảnh...' : submitting ? 'Đang gửi...' : <><Send className="w-4 h-4 mr-2" />Gửi đề xuất</>}
                             </Button>

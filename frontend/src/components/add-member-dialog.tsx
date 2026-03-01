@@ -38,6 +38,7 @@ interface FamilyOption {
     label: string;
     fatherName?: string;
     motherName?: string;
+    parentGeneration?: number;
 }
 
 interface PersonOption {
@@ -117,6 +118,9 @@ function StepInfo({
     loading,
     avatarPreview,
     onPhotoChange,
+    familyOptions,
+    preselectedParentFamily,
+    onPreselectedFamilyChange,
 }: {
     form: FormData;
     onChange: (f: Partial<FormData>) => void;
@@ -124,6 +128,9 @@ function StepInfo({
     loading: boolean;
     avatarPreview: string | null;
     onPhotoChange: (file: File | null) => void;
+    familyOptions: FamilyOption[];
+    preselectedParentFamily: string;
+    onPreselectedFamilyChange: (handle: string) => void;
 }) {
     const photoInputRef = useRef<HTMLInputElement>(null);
     const isValid = form.displayName.trim().length >= 2;
@@ -150,6 +157,30 @@ function StepInfo({
                 />
             </div>
 
+            {/* Gia đình cha/mẹ — chọn trước để tự động tính đời */}
+            <div className="space-y-1.5">
+                <label className="text-sm font-medium">Gia đình cha/mẹ (tùy chọn — tự động tính đời)</label>
+                <select
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                    value={preselectedParentFamily}
+                    onChange={e => {
+                        const handle = e.target.value;
+                        onPreselectedFamilyChange(handle);
+                        if (handle) {
+                            const fam = familyOptions.find(f => f.handle === handle);
+                            if (fam?.parentGeneration != null) {
+                                onChange({ generation: fam.parentGeneration + 1 });
+                            }
+                        }
+                    }}
+                >
+                    <option value="">-- Không chọn / Tự nhập đời --</option>
+                    {familyOptions.map(f => (
+                        <option key={f.handle} value={f.handle}>{f.label}</option>
+                    ))}
+                </select>
+            </div>
+
             {/* Giới tính + Đời */}
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -171,7 +202,9 @@ function StepInfo({
                     </div>
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Đời thứ</label>
+                    <label className="text-sm font-medium">
+                        Đời thứ{preselectedParentFamily ? <span className="text-xs text-teal-600 ml-1">(tự động)</span> : ''}
+                    </label>
                     <Input
                         id="member-generation"
                         type="number"
@@ -179,6 +212,8 @@ function StepInfo({
                         max={10}
                         value={form.generation}
                         onChange={e => onChange({ generation: parseInt(e.target.value) || 1 })}
+                        readOnly={!!preselectedParentFamily}
+                        className={preselectedParentFamily ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''}
                     />
                 </div>
             </div>
@@ -360,6 +395,7 @@ function StepRelation({
     onCreatePerson,
     onDone,
     onBack,
+    preselectedFamily,
 }: {
     personHandle: string;
     personName: string;
@@ -369,9 +405,10 @@ function StepRelation({
     onCreatePerson: () => Promise<{ handle?: string, error?: string }>;
     onDone: (message: string) => void;
     onBack: () => void;
+    preselectedFamily?: string;
 }) {
-    const [mode, setMode] = useState<RelationMode>(null);
-    const [selectedFamily, setSelectedFamily] = useState('');
+    const [mode, setMode] = useState<RelationMode>(preselectedFamily ? 'child' : null);
+    const [selectedFamily, setSelectedFamily] = useState(preselectedFamily ?? '');
     const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
     const [spouseRole, setSpouseRole] = useState<'father' | 'mother'>('father');
     const [newFatherHandle, setNewFatherHandle] = useState('');
@@ -724,6 +761,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
     const [loadingOptions, setLoadingOptions] = useState(false);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+    const [preselectedParentFamily, setPreselectedParentFamily] = useState('');
 
     // Load families + people for dropdowns when dialog opens
     useEffect(() => {
@@ -745,6 +783,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
         setCreateError(null);
         setAvatarFile(null);
         setAvatarPreview(null);
+        setPreselectedParentFamily('');
     }, []);
 
     const handlePhotoChange = useCallback((file: File | null) => {
@@ -887,6 +926,9 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         loading={creating}
                         avatarPreview={avatarPreview}
                         onPhotoChange={handlePhotoChange}
+                        familyOptions={families}
+                        preselectedParentFamily={preselectedParentFamily}
+                        onPreselectedFamilyChange={setPreselectedParentFamily}
                     />
                 )}
 
@@ -900,6 +942,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         onCreatePerson={handleCreatePerson}
                         onDone={handleDone}
                         onBack={() => setStep('info')}
+                        preselectedFamily={preselectedParentFamily || undefined}
                     />
                 )}
 

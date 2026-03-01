@@ -698,6 +698,7 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
     fatherName?: string;
     motherName?: string;
     label: string;
+    parentGeneration?: number;
 }>> {
     const { data: families } = await supabase
         .from('families')
@@ -714,14 +715,16 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
     });
 
     let nameMap: Record<string, string> = {};
+    let generationMap: Record<string, number> = {};
     if (personHandles.size > 0) {
         const { data: people } = await supabase
             .from('people')
-            .select('handle, display_name')
+            .select('handle, display_name, generation')
             .in('handle', Array.from(personHandles));
         if (people) {
-            people.forEach((p: { handle: string; display_name: string }) => {
+            people.forEach((p: { handle: string; display_name: string; generation: number }) => {
                 nameMap[p.handle] = p.display_name;
+                generationMap[p.handle] = p.generation;
             });
         }
     }
@@ -729,11 +732,14 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
     return families.map((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
         const fatherName = f.father_handle ? nameMap[f.father_handle] : undefined;
         const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;
+        const fatherGen = f.father_handle ? generationMap[f.father_handle] : undefined;
+        const motherGen = f.mother_handle ? generationMap[f.mother_handle] : undefined;
+        const parentGeneration = Math.max(fatherGen ?? 0, motherGen ?? 0) || undefined;
         const parts = [fatherName, motherName].filter(Boolean);
         const label = parts.length > 0
-            ? `${f.handle} 窶・${parts.join(' & ')}`
+            ? `${f.handle} — ${parts.join(' & ')}`
             : f.handle;
-        return { handle: f.handle, fatherName, motherName, label };
+        return { handle: f.handle, fatherName, motherName, label, parentGeneration };
     });
 }
 
