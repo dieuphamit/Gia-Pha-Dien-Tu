@@ -116,9 +116,11 @@ export function generateBookData(
     for (const r of roots) {
         setGen(r.handle, 0);
     }
-    // Catch any unassigned
+    // Catch any unassigned — dùng generation từ DB (1-based) chuyển sang 0-based
     for (const p of people) {
-        if (!generations.has(p.handle)) generations.set(p.handle, 0);
+        if (!generations.has(p.handle)) {
+            generations.set(p.handle, Math.max(0, p.generation - 1));
+        }
     }
 
     // ── Step 2: Build person entries ──
