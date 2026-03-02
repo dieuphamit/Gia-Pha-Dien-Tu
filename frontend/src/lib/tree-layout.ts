@@ -160,11 +160,15 @@ function buildSubtree(
         const child = personMap.get(childHandle);
         if (!child) continue;
 
-        // Find child's own family (where child is a parent)
-        const childFamily = Array.from(familyMap.values()).find(f =>
+        // Find child's own family (where child is a parent).
+        // Prefer the most complete family (both father + mother) to avoid picking
+        // an incomplete placeholder record when duplicates exist for the same person.
+        const candidateFamilies = Array.from(familyMap.values()).filter(f =>
             !visited.has(f.handle) &&
             (f.fatherHandle === childHandle || f.motherHandle === childHandle)
         );
+        const childFamily = candidateFamilies.find(f => f.fatherHandle && f.motherHandle)
+            ?? candidateFamilies[0];
 
         if (childFamily) {
             const sub = buildSubtree(childFamily, personMap, familyMap, visited);

@@ -479,21 +479,43 @@ function StepRelation({
                 onDone(`✅ Đã thêm ${personName} làm ${spouseRole === 'father' ? 'cha' : 'mẹ'} của ${selectedChildren.length} người con`);
 
             } else if (mode === 'new-family') {
-                const newFH = await generateFamilyHandle();
-                const r = await addFamily({
-                    handle: newFH,
-                    fatherHandle: newFatherHandle || undefined,
-                    motherHandle: newMotherHandle || undefined,
-                });
-                if (r.error) { setError(r.error); setLoading(false); return; }
+                const { fetchFamilies: fetchAllFamilies } = await import('@/lib/supabase-data');
+                const allFamilies = await fetchAllFamilies();
 
-                // Nếu personHandle là cha hoặc mẹ trong gia đình mới
-                const isParent = newFatherHandle === finalPersonHandle || newMotherHandle === finalPersonHandle;
-                if (isParent) {
-                    const role = newFatherHandle === finalPersonHandle ? 'father' : 'mother';
-                    await addPersonAsSpouse(finalPersonHandle, newFH, role);
+                // Nếu cha hoặc mẹ đã có gia đình mà còn thiếu 1 vị trí vợ/chồng
+                // → dùng lại gia đình đó thay vì tạo mới (tránh tạo duplicate)
+                const existingFamily = allFamilies.find(f => {
+                    const fatherMatch = newFatherHandle && f.fatherHandle === newFatherHandle && !f.motherHandle;
+                    const motherMatch = newMotherHandle && f.motherHandle === newMotherHandle && !f.fatherHandle;
+                    return fatherMatch || motherMatch;
+                });
+
+                if (existingFamily) {
+                    // Thêm vị trí còn thiếu vào gia đình đã có
+                    const missingRole = existingFamily.fatherHandle ? 'mother' : 'father';
+                    const missingHandle = missingRole === 'father'
+                        ? (newFatherHandle || finalPersonHandle)
+                        : (newMotherHandle || finalPersonHandle);
+                    const s = await addPersonAsSpouse(missingHandle, existingFamily.handle, missingRole);
+                    if (s.error) { setError(s.error); setLoading(false); return; }
+                    onDone(`✅ Đã liên kết ${personName} vào gia đình ${existingFamily.handle}`);
+                } else {
+                    const newFH = await generateFamilyHandle();
+                    const r = await addFamily({
+                        handle: newFH,
+                        fatherHandle: newFatherHandle || undefined,
+                        motherHandle: newMotherHandle || undefined,
+                    });
+                    if (r.error) { setError(r.error); setLoading(false); return; }
+
+                    // Nếu personHandle là cha hoặc mẹ trong gia đình mới
+                    const isParent = newFatherHandle === finalPersonHandle || newMotherHandle === finalPersonHandle;
+                    if (isParent) {
+                        const role = newFatherHandle === finalPersonHandle ? 'father' : 'mother';
+                        await addPersonAsSpouse(finalPersonHandle, newFH, role);
+                    }
+                    onDone(`✅ Đã tạo gia đình mới ${newFH} và liên kết ${personName}`);
                 }
-                onDone(`✅ Đã tạo gia đình mới ${newFH} và liên kết ${personName}`);
 
             } else if (mode === 'skip') {
                 onDone(`✅ Đã thêm ${personName} vào gia phả (chưa có quan hệ)`);
