@@ -846,3 +846,135 @@ export async function fetchMyContributions(userId: string): Promise<Contribution
     return (data as Contribution[]) || [];
 }
 
+// ── Notification helpers ───────────────────────────────────────────────────
+
+/**
+ * Bulk-insert NEW_POST or NEW_EVENT notifications for all active users,
+ * excluding the actor (the person who created the content).
+ */
+export async function insertNotificationsForAllUsers(params: {
+    type: 'NEW_POST' | 'NEW_EVENT';
+    title: string;
+    message: string;
+    linkUrl: string;
+    actorId: string;
+}): Promise<void> {
+    try {
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('status', 'active');
+
+        if (!profiles || profiles.length === 0) return;
+
+        const recipients = (profiles as { id: string }[])
+            .map(p => p.id)
+            .filter(id => id !== params.actorId);
+
+        if (recipients.length === 0) return;
+
+        await supabase.from('notifications').insert(
+            recipients.map(userId => ({
+                user_id: userId,
+                type: params.type,
+                title: params.title,
+                message: params.message,
+                link_url: params.linkUrl,
+                is_read: false,
+            }))
+        );
+    } catch (err) {
+        console.error('[insertNotificationsForAllUsers]', err);
+    }
+}
+
+/** Mark all unread notifications of a given type as read for the user. */
+export async function markNotificationsReadByType(
+    userId: string,
+    type: 'NEW_POST' | 'NEW_EVENT'
+): Promise<void> {
+    try {
+        await supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', userId)
+            .eq('type', type)
+            .eq('is_read', false);
+    } catch (err) {
+        console.error('[markNotificationsReadByType]', err);
+    }
+}
+
+/** Mark the NEW_EVENT notification for a specific event as read. */
+export async function markEventNotificationRead(
+    userId: string,
+    eventId: string
+): Promise<void> {
+    try {
+        await supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', userId)
+            .eq('type', 'NEW_EVENT')
+            .eq('is_read', false)
+            .like('link_url', `%/events/${eventId}`);
+    } catch (err) {
+        console.error('[markEventNotificationRead]', err);
+    }
+}
+
+/** Mark the NEW_POST notification for a specific post as read. */
+export async function markPostNotificationRead(
+    userId: string,
+    postId: string
+): Promise<void> {
+    try {
+        await supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', userId)
+            .eq('type', 'NEW_POST')
+            .eq('is_read', false)
+            .like('link_url', `%post=${postId}%`);
+    } catch (err) {
+        console.error('[markPostNotificationRead]', err);
+    }
+}
+
+/**
+ * Fetch Set of content IDs from unread notifications:
+ *   NEW_POST  → parses '/feed?post=UUID'   → returns Set<postId>
+ *   NEW_EVENT → parses '/events/UUID'      → returns Set<eventId>
+ */
+export async function fetchUnreadContentIds(
+    userId: string,
+    type: 'NEW_POST' | 'NEW_EVENT'
+): Promise<Set<string>> {
+    try {
+        const { data } = await supabase
+            .from('notifications')
+            .select('link_url')
+            .eq('user_id', userId)
+            .eq('type', type)
+            .eq('is_read', false);
+
+        if (!data) return new Set();
+
+        const ids = new Set<string>();
+        for (const row of data as { link_url: string | null }[]) {
+            if (!row.link_url) continue;
+            if (type === 'NEW_POST') {
+                const m = row.link_url.match(/[?&]post=([^&]+)/);
+                if (m) ids.add(m[1]);
+            } else {
+                const m = row.link_url.match(/\/events\/([^/?]+)/);
+                if (m) ids.add(m[1]);
+            }
+        }
+        return ids;
+    } catch (err) {
+        console.error('[fetchUnreadContentIds]', err);
+        return new Set();
+    }
+}
+

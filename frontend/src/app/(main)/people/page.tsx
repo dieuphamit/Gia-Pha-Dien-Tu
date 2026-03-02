@@ -30,7 +30,11 @@ interface Person {
     deathDate?: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
     isPrivacyFiltered: boolean;
+    isPatrilineal: boolean;
+    isAffiliatedFamily: boolean;
 }
+
+type ClanFilter = 'pham' | 'than_toc' | 'ngoai_toc' | null;
 
 type SortKey = 'displayName' | 'gender' | 'generation' | 'birthDate' | 'deathDate' | 'isLiving';
 
@@ -95,6 +99,7 @@ export default function PeopleListPage() {
     const [search, setSearch] = useState('');
     const [genderFilter, setGenderFilter] = useState<number | null>(null);
     const [livingFilter, setLivingFilter] = useState<boolean | null>(null);
+    const [clanFilter, setClanFilter] = useState<ClanFilter>(null);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
 
     // Default sort: ngày sinh tăng dần
@@ -108,7 +113,7 @@ export default function PeopleListPage() {
             const { supabase } = await import('@/lib/supabase');
             const { data, error } = await supabase
                 .from('people')
-                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered');
+                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family');
             if (!error && data) {
                 setPeople(data.map((row: Record<string, unknown>) => ({
                     handle: row.handle as string,
@@ -119,6 +124,8 @@ export default function PeopleListPage() {
                     deathDate: row.death_date as string | undefined,
                     isLiving: row.is_living as boolean,
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
+                    isPatrilineal: (row.is_patrilineal as boolean) ?? false,
+                    isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
                 })));
             }
         } catch { /* ignore */ }
@@ -139,10 +146,13 @@ export default function PeopleListPage() {
 
     // ── Filter + Sort (client-side) ──
     const sorted = useMemo(() => {
-        const filtered = people.filter(p => {
+        const filtered = people.filter((p) => {
             if (search && !p.displayName.toLowerCase().includes(search.toLowerCase())) return false;
             if (genderFilter !== null && p.gender !== genderFilter) return false;
             if (livingFilter !== null && p.isLiving !== livingFilter) return false;
+            if (clanFilter === 'pham' && !p.isPatrilineal) return false;
+            if (clanFilter === 'than_toc' && !p.isAffiliatedFamily) return false;
+            if (clanFilter === 'ngoai_toc' && (p.isPatrilineal || p.isAffiliatedFamily)) return false;
             return true;
         });
 
@@ -195,7 +205,7 @@ export default function PeopleListPage() {
             const nb = valB as number;
             return sortDir === 'asc' ? na - nb : nb - na;
         });
-    }, [people, search, genderFilter, livingFilter, sortKey, sortDir]);
+    }, [people, search, genderFilter, livingFilter, clanFilter, sortKey, sortDir]);
 
     const sortProps = { currentKey: sortKey, currentDir: sortDir, onSort: handleSort };
 
@@ -248,6 +258,12 @@ export default function PeopleListPage() {
                     <Button variant={livingFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(null)}>Tất cả</Button>
                     <Button variant={livingFilter === true ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(true)}>Còn sống</Button>
                     <Button variant={livingFilter === false ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(false)}>Đã mất</Button>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant={clanFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(null)}>Tất cả</Button>
+                    <Button variant={clanFilter === 'pham' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('pham')}>Dòng họ Phạm</Button>
+                    <Button variant={clanFilter === 'than_toc' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('than_toc')}>Thân tộc</Button>
+                    <Button variant={clanFilter === 'ngoai_toc' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('ngoai_toc')}>Ngoại tộc</Button>
                 </div>
 
                 {/* Sort indicator badge */}

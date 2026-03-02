@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
     Newspaper,
     MessageCircle,
@@ -13,15 +13,23 @@ import {
     Calendar,
     AlertCircle,
     MessageSquarePlus,
+    CheckCheck,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
-import { submitContribution } from '@/lib/supabase-data';
+import {
+    submitContribution,
+    insertNotificationsForAllUsers,
+    fetchUnreadContentIds,
+    markPostNotificationRead,
+    markNotificationsReadByType,
+} from '@/lib/supabase-data';
 
 // === Types ===
 
@@ -62,16 +70,29 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
         setSubmitting(true);
         setError(null);
         try {
-            const { error: insertError } = await supabase.from('posts').insert({
-                author_id: user.id,
-                title: title.trim() || null,
-                body: body.trim(),
-                type: 'general',
-                status: 'published',
-            });
+            const { data: newPost, error: insertError } = await supabase
+                .from('posts')
+                .insert({
+                    author_id: user.id,
+                    title: title.trim() || null,
+                    body: body.trim(),
+                    type: 'general',
+                    status: 'published',
+                })
+                .select('id')
+                .single();
             if (insertError) {
                 setError(`Lỗi đăng bài: ${insertError.message}`);
             } else {
+                insertNotificationsForAllUsers({
+                    type: 'NEW_POST',
+                    title: 'Bài đăng mới trên Bảng tin',
+                    message: title.trim()
+                        ? `${title.trim()} — ${body.trim().slice(0, 80)}`
+                        : body.trim().slice(0, 100),
+                    linkUrl: `/feed?post=${newPost.id}`,
+                    actorId: user.id,
+                });
                 setBody('');
                 setTitle('');
                 setExpanded(false);
@@ -298,9 +319,33 @@ function CommentSection({ postId }: { postId: string }) {
 
 // === Post Card ===
 
-function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
+function PostCard({
+    post,
+    onRefresh,
+    isUnread,
+    onMarkRead,
+}: {
+    post: Post;
+    onRefresh: () => void;
+    isUnread?: boolean;
+    onMarkRead?: () => void;
+}) {
     const { user, isAdmin } = useAuth();
     const [showComments, setShowComments] = useState(false);
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // Auto-mark as read via IntersectionObserver when post scrolls into view
+    useEffect(() => {
+        if (!isUnread || !onMarkRead) return;
+        const el = cardRef.current;
+        if (!el) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => { if (entry.isIntersecting) { onMarkRead(); observer.disconnect(); } },
+            { threshold: 0.6 }
+        );
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [isUnread, onMarkRead]);
 
     const handleDelete = async () => {
         const { error } = await supabase.from('posts').delete().eq('id', post.id);
@@ -312,8 +357,13 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
         if (!error) onRefresh();
     };
 
+    const cardClass = [
+        post.is_pinned ? 'border-primary/30 bg-primary/5' : '',
+        isUnread ? 'border-l-4 border-l-blue-500' : '',
+    ].filter(Boolean).join(' ');
+
     return (
-        <Card className={post.is_pinned ? 'border-primary/30 bg-primary/5' : ''}>
+        <Card ref={cardRef} className={cardClass}>
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -325,6 +375,9 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Calendar className="h-3 w-3" />
                                 {new Date(post.created_at).toLocaleDateString('vi-VN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {isUnread && (
+                                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-blue-500 text-white">Mới</Badge>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -346,11 +399,22 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
                 {post.is_pinned && <Badge variant="secondary" className="text-xs">📌 Ghim</Badge>}
                 {post.title && <h3 className="font-semibold">{post.title}</h3>}
                 <p className="text-sm whitespace-pre-wrap">{post.body}</p>
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setShowComments(!showComments)}>
-                    <MessageCircle className="mr-1 h-4 w-4" />
-                    Bình luận {post.comment_count ? `(${post.comment_count})` : ''}
-                    <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${showComments ? 'rotate-180' : ''}`} />
-                </Button>
+                <div className="flex items-center justify-between pt-1">
+                    <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setShowComments(!showComments)}>
+                        <MessageCircle className="mr-1 h-4 w-4" />
+                        Bình luận {post.comment_count ? `(${post.comment_count})` : ''}
+                        <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${showComments ? 'rotate-180' : ''}`} />
+                    </Button>
+                    {isUnread && (
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            <Checkbox
+                                checked={false}
+                                onCheckedChange={() => onMarkRead?.()}
+                            />
+                            Đánh dấu đã đọc
+                        </label>
+                    )}
+                </div>
                 {showComments && <CommentSection postId={post.id} />}
             </CardContent>
         </Card>
@@ -360,9 +424,41 @@ function PostCard({ post, onRefresh }: { post: Post; onRefresh: () => void }) {
 // === Main Feed Page ===
 
 export default function FeedPage() {
+    const { user } = useAuth();
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [unreadPostIds, setUnreadPostIds] = useState<Set<string>>(new Set());
+
+    // Fetch per-post unread IDs; also clean up legacy '/feed' notifications
+    useEffect(() => {
+        if (!user?.id) return;
+        const uid = user.id;
+        fetchUnreadContentIds(uid, 'NEW_POST').then(ids => setUnreadPostIds(ids));
+        // Clean up old-style notifications that have no post ID (pre-migration)
+        supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', uid)
+            .eq('type', 'NEW_POST')
+            .eq('link_url', '/feed')
+            .eq('is_read', false)
+            .then(() => {});
+    }, [user?.id]);
+
+    const handleMarkPostRead = useCallback(async (postId: string) => {
+        if (!user?.id) return;
+        await markPostNotificationRead(user.id, postId);
+        setUnreadPostIds(prev => { const next = new Set(prev); next.delete(postId); return next; });
+        window.dispatchEvent(new Event('refresh-badges'));
+    }, [user?.id]);
+
+    const handleMarkAllRead = useCallback(async () => {
+        if (!user?.id || unreadPostIds.size === 0) return;
+        await markNotificationsReadByType(user.id, 'NEW_POST');
+        setUnreadPostIds(new Set());
+        window.dispatchEvent(new Event('refresh-badges'));
+    }, [user?.id, unreadPostIds.size]);
 
     const fetchPosts = useCallback(async () => {
         setLoading(true);
@@ -425,12 +521,31 @@ export default function FeedPage() {
 
     return (
         <div className="max-w-2xl mx-auto space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                    <Newspaper className="h-6 w-6" />
-                    Bảng tin
-                </h1>
-                <p className="text-muted-foreground">Tin tức và hoạt động dòng họ</p>
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <Newspaper className="h-6 w-6" />
+                        Bảng tin
+                        {unreadPostIds.size > 0 && (
+                            <span className="text-sm font-normal px-2 py-0.5 rounded-full bg-blue-500 text-white">
+                                {unreadPostIds.size} mới
+                            </span>
+                        )}
+                    </h1>
+                    <p className="text-muted-foreground">Tin tức và hoạt động dòng họ</p>
+                </div>
+                {unreadPostIds.size > 0 && (
+                    <label
+                        className="flex items-center gap-2 cursor-pointer select-none text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                        onClick={handleMarkAllRead}
+                    >
+                        <Checkbox checked={false} onCheckedChange={handleMarkAllRead} />
+                        <span className="flex items-center gap-1">
+                            <CheckCheck className="h-3.5 w-3.5" />
+                            Đánh dấu tất cả đã đọc
+                        </span>
+                    </label>
+                )}
             </div>
 
             <PostComposer onPostCreated={fetchPosts} />
@@ -457,7 +572,13 @@ export default function FeedPage() {
             ) : (
                 <div className="space-y-4">
                     {posts.map((post) => (
-                        <PostCard key={post.id} post={post} onRefresh={fetchPosts} />
+                        <PostCard
+                            key={post.id}
+                            post={post}
+                            onRefresh={fetchPosts}
+                            isUnread={unreadPostIds.has(post.id)}
+                            onMarkRead={() => handleMarkPostRead(post.id)}
+                        />
                     ))}
                 </div>
             )}

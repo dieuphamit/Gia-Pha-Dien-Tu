@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { markEventNotificationRead } from '@/lib/supabase-data';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -207,6 +208,15 @@ export default function EventDetailPage() {
     const [notFound, setNotFound] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
+
+    // Mark the specific event notification as read when viewing this detail page
+    useEffect(() => {
+        const id = params.id as string;
+        if (!user?.id || !id) return;
+        markEventNotificationRead(user.id, id).then(() => {
+            window.dispatchEvent(new Event('refresh-badges'));
+        });
+    }, [user?.id, params.id]);
 
     // ── Fetch event (no PostgREST join) ────────────────────────
     const fetchEvent = useCallback(async () => {

@@ -7,6 +7,16 @@ import { Resend } from 'resend';
 /** Địa chỉ gửi mail (phải verify domain trên Resend) */
 const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'noreply@giaphadientu.vn';
 
+/**
+ * Khi chưa có domain riêng, set EMAIL_TEST_RECIPIENT để chuyển hướng
+ * tất cả email về một địa chỉ duy nhất (email đăng ký Resend).
+ */
+function resolveRecipients(actual: string | string[]): string | string[] {
+    const override = process.env.EMAIL_TEST_RECIPIENT;
+    if (override) return override;
+    return actual;
+}
+
 /** Lazy initialization — trả về null nếu chưa cấu hình RESEND_API_KEY */
 function getResend(): Resend | null {
     const key = process.env.RESEND_API_KEY;
@@ -54,7 +64,7 @@ export async function sendBirthdayNotificationToMembers(
 
     const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
-        to: recipientEmails,
+        to: resolveRecipients(recipientEmails),
         subject: `🎂 Hôm nay là sinh nhật của ${person.displayName}!`,
         html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -109,7 +119,7 @@ export async function sendBirthdayReminderToAdmin(
 
     const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
-        to: adminEmail,
+        to: resolveRecipients(adminEmail),
         subject: `🔔 Nhắc nhở: Ngày mai là sinh nhật của ${person.displayName}`,
         html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -161,7 +171,7 @@ export async function sendNewUserNotificationToAdmin(
 
     const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
-        to: adminEmails,
+        to: resolveRecipients(adminEmails),
         subject: `[Gia Phả] Tài khoản mới chờ duyệt: ${user.displayName}`,
         html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -230,7 +240,7 @@ export async function sendNewContributionNotificationToAdmin(
 
     const { error } = await resend.emails.send({
         from: FROM_ADDRESS,
-        to: adminEmails,
+        to: resolveRecipients(adminEmails),
         subject,
         html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">

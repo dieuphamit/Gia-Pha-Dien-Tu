@@ -25,6 +25,11 @@ import {
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { ContributeEventDialog } from '@/components/contribute-event-dialog';
+import {
+    insertNotificationsForAllUsers,
+    fetchUnreadContentIds,
+    markEventNotificationRead,
+} from '@/lib/supabase-data';
 
 interface EventItem {
     id: string;
@@ -78,17 +83,28 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
         setSubmitting(true);
         setError(null);
         try {
-            const { error: insertError } = await supabase.from('events').insert({
-                title: title.trim(),
-                description: description.trim() || null,
-                start_at: new Date(startAt).toISOString(),
-                location: location.trim() || null,
-                type,
-                creator_id: user.id,
-            });
+            const { data: newEvent, error: insertError } = await supabase
+                .from('events')
+                .insert({
+                    title: title.trim(),
+                    description: description.trim() || null,
+                    start_at: new Date(startAt).toISOString(),
+                    location: location.trim() || null,
+                    type,
+                    creator_id: user.id,
+                })
+                .select('id')
+                .single();
             if (insertError) {
                 setError(`Lỗi tạo sự kiện: ${insertError.message}`);
             } else {
+                insertNotificationsForAllUsers({
+                    type: 'NEW_EVENT',
+                    title: 'Sự kiện mới',
+                    message: `${title.trim()} — ${new Date(startAt).toLocaleDateString('vi-VN')}`,
+                    linkUrl: `/events/${newEvent.id}`,
+                    actorId: user.id,
+                });
                 setOpen(false);
                 setTitle(''); setDescription(''); setStartAt(''); setLocation('');
                 setError(null);
@@ -142,19 +158,37 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
 
 // === Event Card ===
 
-function EventCard({ event }: { event: EventItem }) {
+function EventCard({
+    event,
+    isUnread,
+    onMarkRead,
+}: {
+    event: EventItem;
+    isUnread?: boolean;
+    onMarkRead?: () => void;
+}) {
     const router = useRouter();
     const tl = typeLabels[event.type] || typeLabels.OTHER;
 
+    const cardClass = [
+        'hover:shadow-md transition-shadow cursor-pointer',
+        isUnread ? 'border-l-4 border-l-blue-500' : '',
+    ].filter(Boolean).join(' ');
+
     return (
         <Card
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => router.push(`/events/${event.id}`)}
+            className={cardClass}
+            onClick={() => { onMarkRead?.(); router.push(`/events/${event.id}`); }}
         >
             <CardContent className="p-4 space-y-2">
                 <div className="flex items-start justify-between">
                     <div>
-                        <Badge variant="secondary" className="text-xs mb-1">{tl.emoji} {tl.label}</Badge>
+                        <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="secondary" className="text-xs">{tl.emoji} {tl.label}</Badge>
+                            {isUnread && (
+                                <Badge className="text-[10px] px-1.5 py-0 bg-blue-500 text-white">Mới</Badge>
+                            )}
+                        </div>
                         <h3 className="font-semibold">{event.title}</h3>
                     </div>
                     {event.rsvp_count !== undefined && event.rsvp_count > 0 && (
@@ -188,10 +222,24 @@ function EventCard({ event }: { event: EventItem }) {
 // === Main Page ===
 
 export default function EventsPage() {
-    const { canEdit, isMember } = useAuth();
+    const { canEdit, isMember, user } = useAuth();
     const [events, setEvents] = useState<EventItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [unreadEventIds, setUnreadEventIds] = useState<Set<string>>(new Set());
+
+    // Fetch per-event unread IDs on mount
+    useEffect(() => {
+        if (!user?.id) return;
+        fetchUnreadContentIds(user.id, 'NEW_EVENT').then(ids => setUnreadEventIds(ids));
+    }, [user?.id]);
+
+    const handleMarkEventRead = useCallback(async (eventId: string) => {
+        if (!user?.id) return;
+        await markEventNotificationRead(user.id, eventId);
+        setUnreadEventIds(prev => { const next = new Set(prev); next.delete(eventId); return next; });
+        window.dispatchEvent(new Event('refresh-badges'));
+    }, [user?.id]);
 
     const fetchEvents = useCallback(async () => {
         setLoading(true);
@@ -303,7 +351,14 @@ export default function EventsPage() {
                                 Sắp diễn ra ({upcoming.length})
                             </h2>
                             <div className="grid gap-4">
-                                {upcoming.map(e => <EventCard key={e.id} event={e} />)}
+                                {upcoming.map(e => (
+                                    <EventCard
+                                        key={e.id}
+                                        event={e}
+                                        isUnread={unreadEventIds.has(e.id)}
+                                        onMarkRead={() => handleMarkEventRead(e.id)}
+                                    />
+                                ))}
                             </div>
                         </section>
                     )}
@@ -313,7 +368,14 @@ export default function EventsPage() {
                                 Đã diễn ra ({past.length})
                             </h2>
                             <div className="grid gap-4 opacity-70">
-                                {past.map(e => <EventCard key={e.id} event={e} />)}
+                                {past.map(e => (
+                                    <EventCard
+                                        key={e.id}
+                                        event={e}
+                                        isUnread={unreadEventIds.has(e.id)}
+                                        onMarkRead={() => handleMarkEventRead(e.id)}
+                                    />
+                                ))}
                             </div>
                         </section>
                     )}

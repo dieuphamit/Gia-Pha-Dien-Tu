@@ -99,6 +99,29 @@ export async function POST(request: NextRequest) {
                 .from('contributions')
                 .update({ applied_at: new Date().toISOString() })
                 .eq('id', contributionId);
+
+            // 5a. Notify all active users about new post / new event
+            if (contribution.field_name === 'add_post' && result.insertedId) {
+                const payload = JSON.parse(contribution.new_value as string);
+                await notifyAllUsers(serviceClient, {
+                    type: 'NEW_POST',
+                    title: 'Bài đăng mới trên Bảng tin',
+                    message: payload.title
+                        ? `${payload.title} — ${String(payload.body ?? '').slice(0, 80)}`
+                        : String(payload.body ?? '').slice(0, 100),
+                    linkUrl: `/feed?post=${result.insertedId}`,
+                    excludeId: callerId,
+                });
+            } else if (contribution.field_name === 'add_event' && result.insertedId) {
+                const payload = JSON.parse(contribution.new_value as string);
+                await notifyAllUsers(serviceClient, {
+                    type: 'NEW_EVENT',
+                    title: 'Sự kiện mới',
+                    message: `${payload.title ?? ''} — ${new Date(payload.startAt ?? '').toLocaleDateString('vi-VN')}`,
+                    linkUrl: `/events/${result.insertedId}`,
+                    excludeId: callerId,
+                });
+            }
         }
 
         // 6. Write audit log
@@ -413,4 +436,45 @@ async function applyEditPersonField(
 
     if (error) return { ok: false, error: `Lỗi cập nhật thông tin: ${error.message}` };
     return { ok: true };
+}
+
+// ── Notification helper (server-side, uses serviceClient) ─────────────────
+
+async function notifyAllUsers(
+    serviceClient: ReturnType<typeof createServiceClient>,
+    params: {
+        type: 'NEW_POST' | 'NEW_EVENT';
+        title: string;
+        message: string;
+        linkUrl: string;
+        excludeId: string | null;
+    }
+): Promise<void> {
+    try {
+        const { data: profiles } = await serviceClient
+            .from('profiles')
+            .select('id')
+            .eq('status', 'active');
+
+        if (!profiles || profiles.length === 0) return;
+
+        const recipients = (profiles as { id: string }[])
+            .map(p => p.id)
+            .filter(id => id !== params.excludeId);
+
+        if (recipients.length === 0) return;
+
+        await serviceClient.from('notifications').insert(
+            recipients.map(userId => ({
+                user_id: userId,
+                type: params.type,
+                title: params.title,
+                message: params.message,
+                link_url: params.linkUrl,
+                is_read: false,
+            }))
+        );
+    } catch (err) {
+        console.error('[notifyAllUsers]', err);
+    }
 }

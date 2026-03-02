@@ -27,13 +27,12 @@ function getServiceClient() {
 
 /** Trả về ngày dưới dạng { month, day } theo giờ VN (UTC+7) */
 export function getVNDate(offsetDays = 0): { month: number; day: number; year: number } {
-    const now = new Date();
-    now.setUTCHours(now.getUTCHours() + 7); // UTC → VN
-    now.setDate(now.getDate() + offsetDays);
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const vn = new Date(Date.now() + 7 * 60 * 60 * 1000 + offsetDays * MS_PER_DAY);
     return {
-        month: now.getMonth() + 1, // 1-12
-        day: now.getDate(),
-        year: now.getFullYear(),
+        month: vn.getUTCMonth() + 1, // 1-12
+        day: vn.getUTCDate(),
+        year: vn.getUTCFullYear(),
     };
 }
 

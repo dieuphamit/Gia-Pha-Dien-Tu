@@ -70,11 +70,13 @@ function PendingBadge({ count, collapsed }: { count: number; collapsed: boolean 
 export function Sidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
-    const { isAdmin, canEdit, isLoggedIn } = useAuth();
+    const { isAdmin, canEdit, isLoggedIn, user } = useAuth();
     const [pendingCount, setPendingCount] = useState(0);
     const [pendingUsersCount, setPendingUsersCount] = useState(0);
     const [openBugsCount, setOpenBugsCount] = useState(0);
     const [pendingMediaCount, setPendingMediaCount] = useState(0);
+    const [unreadFeedCount, setUnreadFeedCount] = useState(0);
+    const [unreadEventsCount, setUnreadEventsCount] = useState(0);
     // Feature toggles — đọc từ app_settings, cập nhật realtime
     const [featureMedia, setFeatureMedia] = useState(true);
 
@@ -189,6 +191,49 @@ export function Sidebar() {
         return () => { supabase.removeChannel(channel); };
     }, [canEdit]);
 
+    // Fetch số bảng tin / sự kiện chưa xem (cho tất cả thành viên đã đăng nhập)
+    useEffect(() => {
+        if (!isLoggedIn || !user) return;
+
+        const fetchUnreadCounts = async () => {
+            const [feedRes, eventsRes] = await Promise.all([
+                supabase
+                    .from('notifications')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('type', 'NEW_POST')
+                    .eq('is_read', false),
+                supabase
+                    .from('notifications')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .eq('type', 'NEW_EVENT')
+                    .eq('is_read', false),
+            ]);
+            setUnreadFeedCount(feedRes.count ?? 0);
+            setUnreadEventsCount(eventsRes.count ?? 0);
+        };
+
+        fetchUnreadCounts();
+
+        window.addEventListener('refresh-badges', fetchUnreadCounts);
+
+        const channel = supabase
+            .channel('sidebar-unread-content')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${user.id}`,
+            }, fetchUnreadCounts)
+            .subscribe();
+
+        return () => {
+            window.removeEventListener('refresh-badges', fetchUnreadCounts);
+            supabase.removeChannel(channel);
+        };
+    }, [isLoggedIn, user]);
+
     // Fetch số bug open (chỉ khi là admin)
     useEffect(() => {
         if (!isAdmin) return;
@@ -251,7 +296,10 @@ export function Sidebar() {
                     .filter(item => item.href !== '/media' || featureMedia || isAdmin)
                     .map((item) => {
                         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-                        const badge = (item.href === '/media' && canEdit) ? pendingMediaCount : 0;
+                        const badge =
+                            item.href === '/media' && canEdit ? pendingMediaCount :
+                            item.href === '/feed' ? unreadFeedCount :
+                            item.href === '/events' ? unreadEventsCount : 0;
                         return (
                             <Link key={item.href} href={item.href}>
                                 <span
