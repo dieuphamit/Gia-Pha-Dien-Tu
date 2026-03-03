@@ -281,6 +281,7 @@ type PersonUpdateFields = {
     notes?: string | null;
     biography?: string | null;
     isAffiliatedFamily?: boolean;
+    isPatrilineal?: boolean;
 };
 
 /** Chuyển camelCase fields → snake_case DB columns. Exported for testing. */
@@ -320,6 +321,7 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.notes !== undefined) dbFields.notes = fields.notes;
     if (fields.biography !== undefined) dbFields.biography = fields.biography;
     if (fields.isAffiliatedFamily !== undefined) dbFields.is_affiliated_family = fields.isAffiliatedFamily;
+    if (fields.isPatrilineal !== undefined) dbFields.is_patrilineal = fields.isPatrilineal;
     return dbFields;
 }
 
@@ -373,6 +375,7 @@ export async function addPerson(person: {
     birthDate?: string | null; // ISO DATE: "YYYY-MM-DD"
     deathDate?: string | null; // ISO DATE: "YYYY-MM-DD"
     isLiving?: boolean;
+    isPatrilineal?: boolean;
     families?: string[];
     parentFamilies?: string[];
     zalo?: string | null;
@@ -393,7 +396,7 @@ export async function addPerson(person: {
             death_year: deathYear,
             is_living: person.isLiving ?? true,
             is_privacy_filtered: false,
-            is_patrilineal: person.gender === 1,
+            is_patrilineal: person.isPatrilineal ?? (person.gender === 1),
             families: person.families || [],
             parent_families: person.parentFamilies || [],
             zalo: person.zalo || null,
@@ -502,6 +505,9 @@ export async function addPersonAsChild(personHandle: string, familyHandle: strin
         const r2 = await verifiedUpdate('people', { parent_families: [...currentPF, familyHandle] }, 'handle', personHandle);
         if (r2.error) return r2;
     }
+
+    // Có gia đình cha mẹ → tự động đánh dấu là thân tộc
+    await supabase.from('people').update({ is_patrilineal: true }).eq('handle', personHandle);
 
     if (actorId) {
         insertAuditLog({

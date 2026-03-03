@@ -20,6 +20,7 @@ export interface AddPersonPayload {
     birthDate?: string;
     deathDate?: string;
     isLiving?: boolean;
+    isPatrilineal?: boolean;
     occupation?: string;
     currentAddress?: string;
     phone?: string;
@@ -27,7 +28,9 @@ export interface AddPersonPayload {
     zalo?: string;
     facebook?: string;
     relationHint?: string;
+    parentFamilyHandle?: string;
     spouseHandle?: string;
+    childrenHandles?: string[];
     avatarUrl?: string; // ảnh đại diện đã upload sẵn, set khi tạo người
 }
 

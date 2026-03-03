@@ -42,6 +42,7 @@ interface EditForm {
     birthDate: string; // ISO DATE: "YYYY-MM-DD"
     deathDate: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
+    isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
     phone: string;
     email: string;
@@ -99,7 +100,7 @@ export default function PersonProfilePage() {
 
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
-        birthDate: '', deathDate: '', isLiving: true, isAffiliatedFamily: false,
+        birthDate: '', deathDate: '', isLiving: true, isPatrilineal: false, isAffiliatedFamily: false,
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
         occupation: '', company: '', education: '',
@@ -212,6 +213,7 @@ export default function PersonProfilePage() {
             birthDate: person.birthDate || '',
             deathDate: person.deathDate || '',
             isLiving: person.isLiving,
+            isPatrilineal: person.isPatrilineal ?? false,
             isAffiliatedFamily: person.isAffiliatedFamily ?? false,
             phone: person.phone || '',
             email: person.email || '',
@@ -297,6 +299,7 @@ export default function PersonProfilePage() {
             birthDate: form.birthDate || null,
             deathDate: form.deathDate || null,
             isLiving: form.isLiving,
+            isPatrilineal: form.isPatrilineal,
             isAffiliatedFamily: form.isAffiliatedFamily,
             phone: form.phone || null,
             email: form.email || null,
@@ -762,6 +765,32 @@ export default function PersonProfilePage() {
                                         Đã mất
                                     </Button>
                                 </div>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="text-sm font-medium leading-none">Thân tộc (trong dòng họ)</label>
+                                <div className="flex gap-2 mt-1">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={form.isPatrilineal ? 'default' : 'outline'}
+                                        className={form.isPatrilineal ? 'bg-primary hover:bg-primary/90' : ''}
+                                        onClick={() => setForm(p => ({ ...p, isPatrilineal: true }))}
+                                    >
+                                        Thân tộc
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={!form.isPatrilineal ? 'default' : 'outline'}
+                                        onClick={() => setForm(p => ({ ...p, isPatrilineal: false }))}
+                                    >
+                                        Không thân tộc
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    <span className="font-medium">Thân tộc</span> — là con cháu trong dòng họ (có gia đình cha mẹ trong gia phả).{' '}
+                                    <span className="text-muted-foreground">Không thân tộc</span> — vợ/chồng của thành viên (kết hôn vào).
+                                </p>
                             </div>
                             {!person?.isPatrilineal && (
                                 <div className="md:col-span-2">

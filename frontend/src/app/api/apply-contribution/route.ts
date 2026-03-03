@@ -191,7 +191,7 @@ async function applyAddPerson(
             death_year: deathYear || null,
             death_date: payload.deathDate || null,
             is_living: payload.isLiving ?? true,
-            is_patrilineal: (payload.gender ?? 1) === 1,
+            is_patrilineal: payload.isPatrilineal ?? (!!payload.parentFamilyHandle || (payload.gender ?? 1) === 1),
             is_privacy_filtered: false,
             occupation: payload.occupation?.trim() || null,
             current_address: payload.currentAddress?.trim() || null,
@@ -228,6 +228,25 @@ async function applyAddPerson(
                     .update({ avatar_url: null })
                     .eq('handle', handle);
             }
+        }
+    }
+
+    // Link person to parent family if provided (sets is_patrilineal = true via addPersonAsChild)
+    if (payload.parentFamilyHandle) {
+        const { addPersonAsChild } = await import('@/lib/supabase-data');
+        await addPersonAsChild(handle, payload.parentFamilyHandle);
+    }
+
+    // Link children if provided
+    if (payload.childrenHandles?.length) {
+        const { addPersonAsChild: linkChild } = await import('@/lib/supabase-data');
+        const { generateFamilyHandle, addFamily, addPersonAsSpouse } = await import('@/lib/supabase-data');
+        const famHandle = await generateFamilyHandle();
+        const role = (payload.gender ?? 1) === 1 ? 'father' : 'mother';
+        await addFamily({ handle: famHandle, fatherHandle: role === 'father' ? handle : undefined, motherHandle: role === 'mother' ? handle : undefined });
+        await addPersonAsSpouse(handle, famHandle, role);
+        for (const childHandle of payload.childrenHandles) {
+            await linkChild(childHandle, famHandle);
         }
     }
 

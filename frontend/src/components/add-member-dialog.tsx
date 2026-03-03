@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     UserPlus, ArrowRight, ArrowLeft, Check,
-    Users, GitMerge, SkipForward, Loader2, X, Camera,
+    Users, GitMerge, Loader2, X, Camera,
 } from 'lucide-react';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -31,7 +31,7 @@ import {
 // ── Types ─────────────────────────────────────────────────────
 
 type Step = 'info' | 'relation' | 'done';
-type RelationMode = 'child' | 'spouse' | 'new-family' | 'skip' | null;
+type RelationMode = 'child' | 'spouse' | 'new-family' | null;
 
 interface FamilyOption {
     handle: string;
@@ -61,6 +61,7 @@ interface FormData {
     email: string;
     zalo: string;
     facebook: string;
+    isPatrilineal: boolean;
 }
 
 const INITIAL_FORM: FormData = {
@@ -76,6 +77,7 @@ const INITIAL_FORM: FormData = {
     email: '',
     zalo: '',
     facebook: '',
+    isPatrilineal: false,
 };
 
 // ── Sub components ─────────────────────────────────────────────
@@ -118,9 +120,7 @@ function StepInfo({
     loading,
     avatarPreview,
     onPhotoChange,
-    familyOptions,
-    preselectedParentFamily,
-    onPreselectedFamilyChange,
+    generationAutoComputed,
 }: {
     form: FormData;
     onChange: (f: Partial<FormData>) => void;
@@ -128,9 +128,7 @@ function StepInfo({
     loading: boolean;
     avatarPreview: string | null;
     onPhotoChange: (file: File | null) => void;
-    familyOptions: FamilyOption[];
-    preselectedParentFamily: string;
-    onPreselectedFamilyChange: (handle: string) => void;
+    generationAutoComputed: boolean;
 }) {
     const photoInputRef = useRef<HTMLInputElement>(null);
     const isValid = form.displayName.trim().length >= 2;
@@ -157,30 +155,6 @@ function StepInfo({
                 />
             </div>
 
-            {/* Gia đình cha/mẹ — chọn trước để tự động tính đời */}
-            <div className="space-y-1.5">
-                <label className="text-sm font-medium">Gia đình cha/mẹ (tùy chọn — tự động tính đời)</label>
-                <select
-                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
-                    value={preselectedParentFamily}
-                    onChange={e => {
-                        const handle = e.target.value;
-                        onPreselectedFamilyChange(handle);
-                        if (handle) {
-                            const fam = familyOptions.find(f => f.handle === handle);
-                            if (fam?.parentGeneration != null) {
-                                onChange({ generation: fam.parentGeneration + 1 });
-                            }
-                        }
-                    }}
-                >
-                    <option value="">-- Không chọn / Tự nhập đời --</option>
-                    {familyOptions.map(f => (
-                        <option key={f.handle} value={f.handle}>{f.label}</option>
-                    ))}
-                </select>
-            </div>
-
             {/* Giới tính + Đời */}
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -203,7 +177,7 @@ function StepInfo({
                 </div>
                 <div className="space-y-1.5">
                     <label className="text-sm font-medium">
-                        Đời thứ{preselectedParentFamily ? <span className="text-xs text-teal-600 ml-1">(tự động)</span> : ''}
+                        Đời thứ{generationAutoComputed ? <span className="text-xs text-teal-600 ml-1">(tự động — từ tab Quan hệ)</span> : ''}
                     </label>
                     <Input
                         id="member-generation"
@@ -212,8 +186,8 @@ function StepInfo({
                         max={10}
                         value={form.generation}
                         onChange={e => onChange({ generation: parseInt(e.target.value) || 1 })}
-                        readOnly={!!preselectedParentFamily}
-                        className={preselectedParentFamily ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''}
+                        readOnly={generationAutoComputed}
+                        className={generationAutoComputed ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''}
                     />
                 </div>
             </div>
@@ -390,29 +364,34 @@ function StepRelation({
     personHandle,
     personName,
     personGeneration,
+    personGender,
     families,
     people,
     onCreatePerson,
     onDone,
     onBack,
     preselectedFamily,
+    onGenerationChange,
+    onPatrilinealChange,
 }: {
     personHandle: string;
     personName: string;
     personGeneration: number;
+    personGender: number;
     families: FamilyOption[];
     people: PersonOption[];
     onCreatePerson: () => Promise<{ handle?: string, error?: string }>;
     onDone: (message: string) => void;
     onBack: () => void;
     preselectedFamily?: string;
+    onGenerationChange: (gen: number) => void;
+    onPatrilinealChange: (val: boolean) => void;
 }) {
     const [mode, setMode] = useState<RelationMode>(preselectedFamily ? 'child' : null);
     const [selectedFamily, setSelectedFamily] = useState(preselectedFamily ?? '');
     const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
     const [spouseRole, setSpouseRole] = useState<'father' | 'mother'>('father');
-    const [newFatherHandle, setNewFatherHandle] = useState('');
-    const [newMotherHandle, setNewMotherHandle] = useState('');
+    const [newSpouseHandle, setNewSpouseHandle] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -479,46 +458,49 @@ function StepRelation({
                 onDone(`✅ Đã thêm ${personName} làm ${spouseRole === 'father' ? 'cha' : 'mẹ'} của ${selectedChildren.length} người con`);
 
             } else if (mode === 'new-family') {
-                const { fetchFamilies: fetchAllFamilies } = await import('@/lib/supabase-data');
-                const allFamilies = await fetchAllFamilies();
+                // Person's role is determined by gender; spouse takes the opposite role
+                const personRole: 'father' | 'mother' = personGender === 1 ? 'father' : 'mother';
+                const spouseOppRole: 'father' | 'mother' = personGender === 1 ? 'mother' : 'father';
 
-                // Nếu cha hoặc mẹ đã có gia đình mà còn thiếu 1 vị trí vợ/chồng
-                // → dùng lại gia đình đó thay vì tạo mới (tránh tạo duplicate)
-                const existingFamily = allFamilies.find(f => {
-                    const fatherMatch = newFatherHandle && f.fatherHandle === newFatherHandle && !f.motherHandle;
-                    const motherMatch = newMotherHandle && f.motherHandle === newMotherHandle && !f.fatherHandle;
-                    return fatherMatch || motherMatch;
-                });
+                if (newSpouseHandle) {
+                    const { fetchFamilies: fetchAllFamilies } = await import('@/lib/supabase-data');
+                    const allFamilies = await fetchAllFamilies();
 
-                if (existingFamily) {
-                    // Thêm vị trí còn thiếu vào gia đình đã có
-                    const missingRole = existingFamily.fatherHandle ? 'mother' : 'father';
-                    const missingHandle = missingRole === 'father'
-                        ? (newFatherHandle || finalPersonHandle)
-                        : (newMotherHandle || finalPersonHandle);
-                    const s = await addPersonAsSpouse(missingHandle, existingFamily.handle, missingRole);
-                    if (s.error) { setError(s.error); setLoading(false); return; }
-                    onDone(`✅ Đã liên kết ${personName} vào gia đình ${existingFamily.handle}`);
+                    // Nếu vợ/chồng đã có gia đình dang dở (thiếu 1 vị trí) → dùng lại
+                    const existingFamily = allFamilies.find(f => {
+                        return spouseOppRole === 'mother'
+                            ? f.motherHandle === newSpouseHandle && !f.fatherHandle
+                            : f.fatherHandle === newSpouseHandle && !f.motherHandle;
+                    });
+
+                    if (existingFamily) {
+                        const s = await addPersonAsSpouse(finalPersonHandle, existingFamily.handle, personRole);
+                        if (s.error) { setError(s.error); setLoading(false); return; }
+                        onDone(`✅ Đã liên kết ${personName} vào gia đình ${existingFamily.handle}`);
+                    } else {
+                        const newFH = await generateFamilyHandle();
+                        const r = await addFamily({
+                            handle: newFH,
+                            fatherHandle: personRole === 'father' ? finalPersonHandle : newSpouseHandle,
+                            motherHandle: personRole === 'mother' ? finalPersonHandle : newSpouseHandle,
+                        });
+                        if (r.error) { setError(r.error); setLoading(false); return; }
+                        await addPersonAsSpouse(finalPersonHandle, newFH, personRole);
+                        await addPersonAsSpouse(newSpouseHandle, newFH, spouseOppRole);
+                        onDone(`✅ Đã tạo gia đình mới ${newFH} cho ${personName} và vợ/chồng`);
+                    }
                 } else {
+                    // Không chọn vợ/chồng — tạo gia đình chỉ với người này
                     const newFH = await generateFamilyHandle();
                     const r = await addFamily({
                         handle: newFH,
-                        fatherHandle: newFatherHandle || undefined,
-                        motherHandle: newMotherHandle || undefined,
+                        fatherHandle: personRole === 'father' ? finalPersonHandle : undefined,
+                        motherHandle: personRole === 'mother' ? finalPersonHandle : undefined,
                     });
                     if (r.error) { setError(r.error); setLoading(false); return; }
-
-                    // Nếu personHandle là cha hoặc mẹ trong gia đình mới
-                    const isParent = newFatherHandle === finalPersonHandle || newMotherHandle === finalPersonHandle;
-                    if (isParent) {
-                        const role = newFatherHandle === finalPersonHandle ? 'father' : 'mother';
-                        await addPersonAsSpouse(finalPersonHandle, newFH, role);
-                    }
-                    onDone(`✅ Đã tạo gia đình mới ${newFH} và liên kết ${personName}`);
+                    await addPersonAsSpouse(finalPersonHandle, newFH, personRole);
+                    onDone(`✅ Đã tạo gia đình mới ${newFH} cho ${personName}`);
                 }
-
-            } else if (mode === 'skip') {
-                onDone(`✅ Đã thêm ${personName} vào gia phả (chưa có quan hệ)`);
             }
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : 'Lỗi không xác định');
@@ -551,14 +533,6 @@ function StepRelation({
             desc: 'Tạo cặp vợ chồng mới với người này',
             color: 'border-green-300 bg-green-50 dark:bg-green-950/30',
             activeColor: 'border-green-500 ring-2 ring-green-300',
-        },
-        {
-            key: 'skip' as RelationMode,
-            icon: <SkipForward className="h-5 w-5" />,
-            title: 'Bỏ qua',
-            desc: 'Thêm vào gia phả, thiết lập quan hệ sau',
-            color: 'border-gray-300 bg-gray-50 dark:bg-gray-900/30',
-            activeColor: 'border-gray-500 ring-2 ring-gray-300',
         },
     ];
 
@@ -601,7 +575,19 @@ function StepRelation({
                         id="relation-family-child"
                         className="w-full rounded-md border px-3 py-2 text-sm bg-background dark:bg-background"
                         value={selectedFamily}
-                        onChange={e => setSelectedFamily(e.target.value)}
+                        onChange={e => {
+                            const handle = e.target.value;
+                            setSelectedFamily(handle);
+                            if (handle) {
+                                const fam = families.find(f => f.handle === handle);
+                                if (fam?.parentGeneration != null) {
+                                    onGenerationChange(fam.parentGeneration + 1);
+                                }
+                                onPatrilinealChange(true);
+                            } else {
+                                onPatrilinealChange(false);
+                            }
+                        }}
                     >
                         <option value="">-- Chọn gia đình --</option>
                         {families.map(f => (
@@ -639,6 +625,15 @@ function StepRelation({
                             onChange={e => {
                                 const selected = Array.from(e.target.selectedOptions, option => option.value);
                                 setSelectedChildren(selected);
+                                if (selected.length > 0) {
+                                    const childGens = selected
+                                        .map(h => people.find(p => p.handle === h)?.generation)
+                                        .filter((g): g is number => g != null);
+                                    if (childGens.length > 0) {
+                                        onGenerationChange(Math.min(...childGens) - 1);
+                                    }
+                                }
+                                onPatrilinealChange(false);
                             }}
                         >
                             {people.filter(p => !personGeneration || p.generation > personGeneration).map(p => (
@@ -654,53 +649,42 @@ function StepRelation({
             {mode === 'new-family' && (
                 <div className="space-y-3 p-3 rounded-lg border border-green-200 bg-green-50/50 dark:bg-green-950/20">
                     <p className="text-xs text-muted-foreground">
-                        Thành viên vừa tạo (<strong>{personHandle}</strong>) sẽ được tự động gán vào gia đình mới này khi bạn bấm hoàn tất.
+                        <strong>{personName}</strong> ({personGender === 1 ? '👨 Cha' : '👩 Mẹ'}) sẽ được thêm vào gia đình mới.
+                        Bạn có thể chọn vợ/chồng nếu đã có trong gia phả.
                     </p>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Chọn Cha (tùy chọn):</label>
+                        <label className="text-sm font-medium">
+                            Chọn {personGender === 1 ? 'Vợ' : 'Chồng'} (tùy chọn):
+                        </label>
                         <select
-                            id="relation-new-father"
+                            id="relation-new-spouse"
                             className="w-full rounded-md border px-3 py-2 text-sm bg-background dark:bg-background"
-                            value={newFatherHandle}
-                            onChange={e => setNewFatherHandle(e.target.value)}
+                            value={newSpouseHandle}
+                            onChange={e => {
+                                const handle = e.target.value;
+                                setNewSpouseHandle(handle);
+                                if (handle) {
+                                    const p = people.find(x => x.handle === handle);
+                                    if (p) onGenerationChange(p.generation);
+                                }
+                                onPatrilinealChange(false);
+                            }}
                         >
-                            <option value="">-- Chưa có cha --</option>
-                            {people.filter(p => p.gender === 1 && p.generation <= personGeneration).map(p => (
-                                <option key={p.handle} value={p.handle}>
-                                    {p.displayName} ({p.handle}, Đ{p.generation})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Chọn Mẹ (tùy chọn):</label>
-                        <select
-                            id="relation-new-mother"
-                            className="w-full rounded-md border px-3 py-2 text-sm bg-background dark:bg-background"
-                            value={newMotherHandle}
-                            onChange={e => setNewMotherHandle(e.target.value)}
-                        >
-                            <option value="">-- Chưa có mẹ --</option>
-                            {people.filter(p => p.gender === 2 && p.generation <= personGeneration).map(p => (
-                                <option key={p.handle} value={p.handle}>
-                                    {p.displayName} ({p.handle}, Đ{p.generation})
-                                </option>
-                            ))}
+                            <option value="">-- Chưa có / Để trống --</option>
+                            {people
+                                .filter(p => p.gender !== personGender && p.handle !== personHandle)
+                                .map(p => (
+                                    <option key={p.handle} value={p.handle}>
+                                        {p.displayName} ({p.handle}, Đ{p.generation})
+                                    </option>
+                                ))}
                         </select>
                     </div>
                 </div>
             )}
 
-            {mode === 'skip' && (
-                <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50 dark:bg-gray-900/20">
-                    <p className="text-sm text-muted-foreground">
-                        {personName} sẽ được thêm vào danh sách nhưng chưa gắn vào cây gia phả.
-                        Bạn có thể thiết lập quan hệ sau từ trang chi tiết của người này.
-                    </p>
-                </div>
-            )}
 
-            {error && (
+{error && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                     <X className="h-4 w-4 shrink-0" />
                     {error}
@@ -783,7 +767,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
     const [loadingOptions, setLoadingOptions] = useState(false);
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-    const [preselectedParentFamily, setPreselectedParentFamily] = useState('');
+    const [generationAutoComputed, setGenerationAutoComputed] = useState(false);
 
     // Load families + people for dropdowns when dialog opens
     useEffect(() => {
@@ -805,7 +789,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
         setCreateError(null);
         setAvatarFile(null);
         setAvatarPreview(null);
-        setPreselectedParentFamily('');
+        setGenerationAutoComputed(false);
     }, []);
 
     const handlePhotoChange = useCallback((file: File | null) => {
@@ -868,6 +852,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             birthDate: form.birthDate || null,
             deathDate: form.deathDate || null,
             isLiving: form.isLiving,
+            isPatrilineal: form.isPatrilineal,
             families: [],
             parentFamilies: [],
             zalo: form.zalo || null,
@@ -948,9 +933,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         loading={creating}
                         avatarPreview={avatarPreview}
                         onPhotoChange={handlePhotoChange}
-                        familyOptions={families}
-                        preselectedParentFamily={preselectedParentFamily}
-                        onPreselectedFamilyChange={setPreselectedParentFamily}
+                        generationAutoComputed={generationAutoComputed}
                     />
                 )}
 
@@ -959,12 +942,17 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         personHandle={createdHandle}
                         personName={form.displayName}
                         personGeneration={form.generation}
+                        personGender={form.gender}
                         families={families}
                         people={people}
                         onCreatePerson={handleCreatePerson}
                         onDone={handleDone}
                         onBack={() => setStep('info')}
-                        preselectedFamily={preselectedParentFamily || undefined}
+                        onGenerationChange={gen => {
+                            setForm(prev => ({ ...prev, generation: gen }));
+                            setGenerationAutoComputed(true);
+                        }}
+                        onPatrilinealChange={val => setForm(prev => ({ ...prev, isPatrilineal: val }))}
                     />
                 )}
 

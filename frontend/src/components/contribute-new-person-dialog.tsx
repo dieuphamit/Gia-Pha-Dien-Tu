@@ -22,6 +22,7 @@ interface NewPersonPayload {
     birthDate?: string; // ISO DATE: "YYYY-MM-DD"
     deathDate?: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
+    isPatrilineal?: boolean;
     occupation?: string;
     currentAddress?: string;
     phone?: string;
@@ -66,12 +67,27 @@ export function ContributeNewPersonDialog() {
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const photoInputRef = useRef<HTMLInputElement>(null);
 
-    // Auto-compute generation from selected parent family
+    // Auto-compute generation: ưu tiên gia đình cha/mẹ → vợ/chồng → con cái
     const computedGeneration = useMemo(() => {
-        if (!parentFamilyHandle) return undefined;
-        const fam = familyOptions.find(f => f.handle === parentFamilyHandle);
-        return fam?.parentGeneration != null ? fam.parentGeneration + 1 : undefined;
-    }, [parentFamilyHandle, familyOptions]);
+        if (parentFamilyHandle) {
+            const fam = familyOptions.find(f => f.handle === parentFamilyHandle);
+            return fam?.parentGeneration != null ? fam.parentGeneration + 1 : undefined;
+        }
+        if (spouseHandle) {
+            const spouse = peopleOptions.find(p => p.handle === spouseHandle);
+            return spouse?.generation;
+        }
+        if (childrenHandles.length > 0) {
+            const childGens = childrenHandles
+                .map(h => peopleOptions.find(p => p.handle === h)?.generation)
+                .filter((g): g is number => g != null);
+            if (childGens.length > 0) return Math.min(...childGens) - 1;
+        }
+        return undefined;
+    }, [parentFamilyHandle, spouseHandle, childrenHandles, familyOptions, peopleOptions]);
+
+    // Thân tộc = có gia đình cha mẹ được chọn
+    const computedIsPatrilineal = useMemo(() => !!parentFamilyHandle, [parentFamilyHandle]);
 
     useEffect(() => {
         if (open) {
@@ -100,8 +116,7 @@ export function ContributeNewPersonDialog() {
 
     const handleSubmit = async () => {
         if (!displayName.trim()) { setError('Vui lòng nhập họ tên'); return; }
-        if (!parentFamilyHandle) { setError('Vui lòng chọn gia đình cha/mẹ'); return; }
-        if (computedGeneration == null) { setError('Không thể tính đời từ gia đình này. Vui lòng liên hệ admin.'); return; }
+        if (computedGeneration == null) { setError('Vui lòng chọn gia đình cha/mẹ, vợ/chồng, hoặc con cái để tự động tính đời.'); return; }
         if (!user) { setError('Bạn cần đăng nhập'); return; }
 
         setSubmitting(true);
@@ -147,6 +162,7 @@ export function ContributeNewPersonDialog() {
             birthDate: birthDate || undefined,
             deathDate: deathDate || undefined,
             isLiving,
+            isPatrilineal: computedIsPatrilineal,
             occupation: occupation.trim() || undefined,
             currentAddress: address.trim() || undefined,
             phone: phone.trim() || undefined,
@@ -154,7 +170,7 @@ export function ContributeNewPersonDialog() {
             zalo: zalo.trim() || undefined,
             facebook: facebook.trim() || undefined,
             relationHint: relationHint.trim() || undefined,
-            parentFamilyHandle,
+            parentFamilyHandle: parentFamilyHandle || undefined,
             childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
             spouseHandle: spouseHandle || undefined,
             avatarUrl: uploadedAvatarUrl,
@@ -224,36 +240,34 @@ export function ContributeNewPersonDialog() {
                             />
                         </div>
 
-                        {/* Gia đình cha/mẹ — đặt lên trên để tự động tính đời */}
+                        {/* Gia đình cha/mẹ — ưu tiên cao nhất để tự động tính đời */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-muted-foreground">Gia đình cha/mẹ *</label>
+                            <label className="text-xs font-medium text-muted-foreground">Gia đình cha/mẹ (tùy chọn — ưu tiên tính đời)</label>
                             <select
                                 value={parentFamilyHandle}
                                 onChange={e => setParentFamilyHandle(e.target.value)}
                                 className="w-full rounded-md border px-3 py-2 text-sm bg-background"
                             >
-                                <option value="">-- Chọn gia đình cha/mẹ --</option>
+                                <option value="">-- Không chọn --</option>
                                 {familyOptions.map(f => (
                                     <option key={f.handle} value={f.handle}>
                                         {f.label}
                                     </option>
                                 ))}
                             </select>
-                            {/* Hiển thị đời tự động tính */}
-                            {parentFamilyHandle && (
-                                computedGeneration != null ? (
-                                    <p className="text-xs text-muted-foreground">
-                                        Đời thứ:{' '}
-                                        <span className="font-semibold text-foreground">{computedGeneration}</span>
-                                        <span className="ml-1 text-teal-600">(tự động tính)</span>
-                                    </p>
-                                ) : (
-                                    <p className="text-xs text-amber-600">
-                                        Không thể tính đời từ gia đình này. Vui lòng liên hệ admin.
-                                    </p>
-                                )
+                            {parentFamilyHandle && computedIsPatrilineal && (
+                                <p className="text-xs text-teal-600">Thân tộc: Có (tự động)</p>
                             )}
                         </div>
+
+                        {/* Hiển thị đời tính tự động từ bất kỳ nguồn nào */}
+                        {computedGeneration != null && (
+                            <p className="text-xs text-muted-foreground rounded bg-muted/50 px-2 py-1">
+                                Đời thứ:{' '}
+                                <span className="font-semibold text-foreground">{computedGeneration}</span>
+                                <span className="ml-1 text-teal-600">(tự động tính)</span>
+                            </p>
+                        )}
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium text-muted-foreground">Giới tính</label>
