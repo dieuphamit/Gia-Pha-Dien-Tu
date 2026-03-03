@@ -44,7 +44,7 @@ export interface BookData {
     totalMembers: number;
     totalPatrilineal: number;
     chapters: BookChapter[];
-    nameIndex: { name: string; generation: number; isPatrilineal: boolean }[];
+    nameIndex: { name: string; generation: number; isPatrilineal: boolean; isAffiliated: boolean }[];
 }
 
 // ═══ Helpers ═══
@@ -83,44 +83,13 @@ export function generateBookData(
     const personMap = new Map(people.map(p => [p.handle, p]));
     const familyMap = new Map(families.map(f => [f.handle, f]));
 
-    // ── Step 1: Assign generations via BFS from roots ──
+    // ── Step 1: Assign generations from DB (1-based → 0-based) ──
+    // DB generation is the source of truth (auto-computed when members are added).
+    // A BFS approach had a race condition where non-Phạm spouses (root nodes)
+    // could corrupt the generation of their in-tree partner and children.
     const generations = new Map<string, number>();
-    const childOfFamily = new Set<string>();
-    for (const f of families) {
-        for (const ch of f.children) childOfFamily.add(ch);
-    }
-
-    // Find root persons (not a child of any family)
-    const roots = people.filter(p => !childOfFamily.has(p.handle));
-
-    function setGen(handle: string, gen: number) {
-        if (generations.has(handle)) return;
-        generations.set(handle, gen);
-        const person = personMap.get(handle);
-        if (!person) return;
-        for (const famId of person.families) {
-            const fam = familyMap.get(famId);
-            if (!fam) continue;
-            // Spouse gets same generation
-            if (fam.fatherHandle && fam.fatherHandle !== handle) {
-                if (!generations.has(fam.fatherHandle)) generations.set(fam.fatherHandle, gen);
-            }
-            if (fam.motherHandle && fam.motherHandle !== handle) {
-                if (!generations.has(fam.motherHandle)) generations.set(fam.motherHandle, gen);
-            }
-            // Children get gen+1
-            for (const ch of fam.children) setGen(ch, gen + 1);
-        }
-    }
-
-    for (const r of roots) {
-        setGen(r.handle, 0);
-    }
-    // Catch any unassigned — dùng generation từ DB (1-based) chuyển sang 0-based
     for (const p of people) {
-        if (!generations.has(p.handle)) {
-            generations.set(p.handle, Math.max(0, p.generation - 1));
-        }
+        generations.set(p.handle, Math.max(0, p.generation - 1));
     }
 
     // ── Step 2: Build person entries ──
@@ -249,6 +218,7 @@ export function generateBookData(
             name: p.displayName,
             generation: generations.get(p.handle) ?? 0,
             isPatrilineal: p.isPatrilineal,
+            isAffiliated: p.isAffiliatedFamily ?? false,
         }))
         .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 

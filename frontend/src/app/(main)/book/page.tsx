@@ -607,17 +607,17 @@ function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
     startIdx?: number; endIdx?: number; showHeader?: boolean;
 }) {
     const patrilineal = bookData.nameIndex.filter(e => e.isPatrilineal);
-    const ngoaitoc = bookData.nameIndex.filter(e => !e.isPatrilineal);
-    // Combined sorted list for pagination
-    const allEntries = [...patrilineal, ...ngoaitoc];
+    const thantoc = bookData.nameIndex.filter(e => !e.isPatrilineal && e.isAffiliated);
+    const ngoaitoc = bookData.nameIndex.filter(e => !e.isPatrilineal && !e.isAffiliated);
+    // Combined sorted list for pagination: Nội tộc → Thân tộc → Ngoại tộc
+    const allEntries = [...patrilineal, ...thantoc, ...ngoaitoc];
     const start = startIdx ?? 0;
     const end = endIdx ?? allEntries.length;
     const pageEntries = allEntries.slice(start, end);
 
-    // Determine section boundaries
+    // Section boundary indices
     const patriEnd = patrilineal.length;
-    const showPatriHeader = start < patriEnd;
-    const showNgoaiHeader = end > patriEnd && start < allEntries.length;
+    const thanEnd = patriEnd + thantoc.length;
 
     return (
         <>
@@ -636,8 +636,8 @@ function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
                 </p>
             )}
 
-            {/* Render entries with section headers inline */}
-            {showPatriHeader && start === 0 && (
+            {/* Nội tộc header (first page only) */}
+            {start === 0 && (
                 <h3 className="text-base font-bold font-serif mb-3 tracking-wide pb-2"
                     style={{ color: t.primary, borderBottom: `1px solid ${t.border}` }}>
                     NỘI TỘC — Dòng họ {bookData.familyName} ({patrilineal.length} người)
@@ -647,23 +647,38 @@ function AppendixContent({ bookData, theme: t, startIdx, endIdx, showHeader }: {
             <div className="columns-3 gap-4 text-[11px] font-serif">
                 {pageEntries.map((entry, i) => {
                     const globalIdx = start + i;
-                    const isNgoaiStart = globalIdx === patriEnd;
+                    const isPatri = globalIdx < patriEnd;
+                    const isThan = globalIdx >= patriEnd && globalIdx < thanEnd;
+                    const isNgoai = globalIdx >= thanEnd;
+
+                    const isStartOfThan = globalIdx === patriEnd;
+                    const isStartOfNgoai = globalIdx === thanEnd;
+
+                    const nameColor = isPatri ? t.primary : isThan ? '#854d0e' : '#78716c';
+                    const dotColor = isPatri ? t.borderLight : isThan ? '#fde68a' : '#d6d3d1';
+                    const numColor = isPatri ? t.textMuted : isThan ? '#92400e99' : '#a8a29e';
+
                     return (
                         <div key={`e-${globalIdx}`}>
-                            {isNgoaiStart && (
+                            {isStartOfThan && thantoc.length > 0 && (
+                                <h3 className="text-base font-bold font-serif mb-3 mt-6 tracking-wide pb-2 break-before-column"
+                                    style={{ color: '#92400e', borderBottom: '1px solid #fde68a' }}>
+                                    THÂN TỘC — Con dâu, con rể ({thantoc.length} người)
+                                </h3>
+                            )}
+                            {isStartOfNgoai && ngoaitoc.length > 0 && (
                                 <h3 className="text-base font-bold font-serif mb-3 mt-6 tracking-wide pb-2 text-stone-600 border-b border-stone-300 break-before-column">
                                     NGOẠI TỘC — Thân thuộc ({ngoaitoc.length} người)
                                 </h3>
                             )}
                             <div className="flex items-baseline gap-1 py-0.5 break-inside-avoid">
-                                <span className={globalIdx < patriEnd ? 'font-semibold' : 'text-stone-600'}
-                                    style={globalIdx < patriEnd ? { color: t.primary } : undefined}>
+                                <span className={isPatri ? 'font-semibold' : isThan ? 'font-medium' : ''}
+                                    style={{ color: nameColor }}>
                                     {entry.name}
                                 </span>
                                 <span className="flex-1 border-b border-dotted mx-1"
-                                    style={{ borderColor: globalIdx < patriEnd ? t.borderLight : '#d6d3d1' }} />
-                                <span className="text-xs"
-                                    style={{ color: globalIdx < patriEnd ? t.textMuted : '#a8a29e' }}>
+                                    style={{ borderColor: dotColor }} />
+                                <span className="text-xs" style={{ color: numColor }}>
                                     Đời {entry.generation + 1}
                                 </span>
                             </div>
