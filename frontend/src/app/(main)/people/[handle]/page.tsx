@@ -767,59 +767,39 @@ export default function PersonProfilePage() {
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="text-sm font-medium leading-none">Thân tộc (trong dòng họ)</label>
-                                <div className="flex gap-2 mt-1">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={form.isPatrilineal ? 'default' : 'outline'}
-                                        className={form.isPatrilineal ? 'bg-primary hover:bg-primary/90' : ''}
-                                        onClick={() => setForm(p => ({ ...p, isPatrilineal: true }))}
-                                    >
-                                        Thân tộc
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={!form.isPatrilineal ? 'default' : 'outline'}
-                                        onClick={() => setForm(p => ({ ...p, isPatrilineal: false }))}
-                                    >
-                                        Không thân tộc
-                                    </Button>
+                                <label className="text-sm font-medium leading-none">Phân loại trong họ tộc</label>
+                                <div className="flex gap-2 mt-2">
+                                    {[
+                                        { value: 'chinh', label: 'Chính Tộc', desc: 'Họ Phạm', activeClass: 'bg-rose-600 hover:bg-rose-700 border-rose-600 text-white' },
+                                        { value: 'than',  label: 'Thân Tộc',  desc: 'Có thông tin cha mẹ', activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
+                                        { value: 'ngoai', label: 'Ngoại Tộc', desc: 'Vợ/chồng lấy vào', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
+                                    ].map(opt => {
+                                        const current = form.isPatrilineal ? 'chinh' : form.isAffiliatedFamily ? 'than' : 'ngoai';
+                                        const isSelected = current === opt.value;
+                                        return (
+                                            <Button
+                                                key={opt.value}
+                                                type="button"
+                                                size="sm"
+                                                variant={isSelected ? 'default' : 'outline'}
+                                                className={isSelected ? opt.activeClass : ''}
+                                                onClick={() => setForm(p => ({
+                                                    ...p,
+                                                    isPatrilineal: opt.value === 'chinh',
+                                                    isAffiliatedFamily: opt.value === 'than',
+                                                }))}
+                                            >
+                                                {opt.label}
+                                            </Button>
+                                        );
+                                    })}
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    <span className="font-medium">Thân tộc</span> — là con cháu trong dòng họ (có gia đình cha mẹ trong gia phả).{' '}
-                                    <span className="text-muted-foreground">Không thân tộc</span> — vợ/chồng của thành viên (kết hôn vào).
+                                    <span className="text-rose-600 font-medium">Chính Tộc</span> — họ Phạm.{' '}
+                                    <span className="text-teal-600 font-medium">Thân Tộc</span> — có thông tin cha mẹ trong hệ thống.{' '}
+                                    <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào, không rõ gốc.
                                 </p>
                             </div>
-                            {!person?.isPatrilineal && (
-                                <div className="md:col-span-2">
-                                    <label className="text-sm font-medium leading-none">Phân loại tộc</label>
-                                    <div className="flex gap-2 mt-1">
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={form.isAffiliatedFamily ? 'default' : 'outline'}
-                                            className={form.isAffiliatedFamily ? 'bg-teal-500 hover:bg-teal-600 border-teal-500' : ''}
-                                            onClick={() => setForm(p => ({ ...p, isAffiliatedFamily: true }))}
-                                        >
-                                            Thân tộc
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={!form.isAffiliatedFamily ? 'default' : 'outline'}
-                                            onClick={() => setForm(p => ({ ...p, isAffiliatedFamily: false }))}
-                                        >
-                                            Ngoại tộc
-                                        </Button>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        <span className="text-teal-600 font-medium">Thân tộc</span> — có nguồn gốc gần với họ Phạm (vợ/chồng, con cháu qua kết hôn).
-                                        <span className="text-slate-500 ml-1">Ngoại tộc</span> — không liên quan trực tiếp.
-                                    </p>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
 
@@ -1109,6 +1089,16 @@ export default function PersonProfilePage() {
                                 <InfoRow label="Họ" value={person.surname || '—'} />
                                 <InfoRow label="Tên" value={person.firstName || '—'} />
                                 <InfoRow label="Giới tính" value={genderLabel} />
+                                <div>
+                                    <p className="text-xs font-medium text-muted-foreground">Họ tộc</p>
+                                    {person.isPatrilineal ? (
+                                        <Badge className="bg-rose-600 text-white mt-0.5">Chính Tộc</Badge>
+                                    ) : (person.parentFamilies?.length ?? 0) > 0 || person.isAffiliatedFamily ? (
+                                        <Badge className="bg-teal-600 text-white mt-0.5">Thân Tộc</Badge>
+                                    ) : (
+                                        <Badge variant="secondary" className="mt-0.5">Ngoại Tộc</Badge>
+                                    )}
+                                </div>
                                 {person.nickName && <InfoRow label="Tên thường gọi" value={person.nickName} />}
                                 <InfoRow label="Ngày sinh" value={person.birthDate ? formatDateVN(person.birthDate) : (person.birthYear ? `${person.birthYear}` : '—')} />
                                 {(person.birthDate || person.birthYear) && <InfoRow label="Năm âm lịch" value={zodiacYear(person.birthDate ? new Date(person.birthDate).getFullYear() : person.birthYear) || '—'} />}
