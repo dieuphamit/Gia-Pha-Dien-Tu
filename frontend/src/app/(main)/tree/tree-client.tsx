@@ -1198,7 +1198,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                 {/* Tooltip on hover */}
                 <div className="hidden group-hover:block absolute -top-8 left-1/2 -translate-x-1/2 z-50
                     bg-slate-900 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap pointer-events-none">
-                    {node.displayName} · Đời {item.generation + 1}
+                    {node.displayName} · Đời {item.node.generation}
                 </div>
             </div>
         );
@@ -1268,7 +1268,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                     )}
                     <div className="flex-1 min-w-0">
                         <p className="font-semibold text-[10px] leading-tight text-slate-800 truncate">{node.displayName}</p>
-                        <span className="text-[8px] font-semibold px-0.5 py-px rounded bg-amber-100 text-amber-700">Đời {item.generation + 1}</span>
+                        <span className="text-[8px] font-semibold px-0.5 py-px rounded bg-amber-100 text-amber-700">Đời {item.node.generation}</span>
                     </div>
                 </div>
                 {/* Collapse toggle */}
@@ -1336,7 +1336,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
                             : '—'}
                     </p>
                     <div className="mt-0.5 flex items-center gap-1">
-                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200/60">Đời {item.generation + 1}</span>
+                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200/60">Đời {item.node.generation}</span>
                         {isDead ? (
                             <span className="text-[9px] text-slate-400">✝ Đã mất</span>
                         ) : (
