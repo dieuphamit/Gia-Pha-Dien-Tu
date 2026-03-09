@@ -72,6 +72,7 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         families: (row.families as string[]) || [],
         parentFamilies: (row.parent_families as string[]) || [],
         avatarUrl: (row.avatar_url as string | null) ?? undefined,
+        clanHandle: (row.clan_handle as string | null) ?? undefined,
     };
 }
 
@@ -86,14 +87,19 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 
 // 笏笏 Read operations 笏笏
 
-/** Fetch all people from Supabase */
-export async function fetchPeople(): Promise<TreeNode[]> {
-    const { data, error } = await supabase
+/** Fetch all people from Supabase, optionally filtered by clan */
+export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
+    let query = supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url, clan_handle')
         .order('generation')
         .order('handle');
 
+    if (clanHandle) {
+        query = query.eq('clan_handle', clanHandle);
+    }
+
+    const { data, error } = await query;
     if (error) {
         console.error('Failed to fetch people:', error.message);
         return [];
@@ -101,13 +107,18 @@ export async function fetchPeople(): Promise<TreeNode[]> {
     return (data || []).map(dbRowToTreeNode);
 }
 
-/** Fetch all families from Supabase */
-export async function fetchFamilies(): Promise<TreeFamily[]> {
-    const { data, error } = await supabase
+/** Fetch all families from Supabase, optionally filtered by clan */
+export async function fetchFamilies(clanHandle?: string): Promise<TreeFamily[]> {
+    let query = supabase
         .from('families')
         .select('handle, father_handle, mother_handle, children')
         .order('handle');
 
+    if (clanHandle) {
+        query = query.eq('clan_handle', clanHandle);
+    }
+
+    const { data, error } = await query;
     if (error) {
         console.error('Failed to fetch families:', error.message);
         return [];
@@ -115,10 +126,27 @@ export async function fetchFamilies(): Promise<TreeFamily[]> {
     return (data || []).map(dbRowToTreeFamily);
 }
 
-/** Fetch both people and families in parallel */
-export async function fetchTreeData(): Promise<{ people: TreeNode[]; families: TreeFamily[] }> {
-    const [people, families] = await Promise.all([fetchPeople(), fetchFamilies()]);
+/** Fetch both people and families in parallel, optionally filtered by clan */
+export async function fetchTreeData(clanHandle?: string): Promise<{ people: TreeNode[]; families: TreeFamily[] }> {
+    const [people, families] = await Promise.all([fetchPeople(clanHandle), fetchFamilies(clanHandle)]);
     return { people, families };
+}
+
+/** Fetch all clans from Supabase */
+export async function fetchClans(): Promise<Array<{ handle: string; displayName: string; description?: string }>> {
+    const { data, error } = await supabase
+        .from('clans')
+        .select('handle, display_name, description')
+        .order('handle');
+    if (error) {
+        console.error('Failed to fetch clans:', error.message);
+        return [];
+    }
+    return (data || []).map((r: { handle: string; display_name: string; description: string | null }) => ({
+        handle: r.handle,
+        displayName: r.display_name,
+        description: r.description ?? undefined,
+    }));
 }
 
 // 笏笏 Write operations (editor mode) 笏笏
@@ -380,6 +408,7 @@ export async function addPerson(person: {
     parentFamilies?: string[];
     zalo?: string | null;
     facebook?: string | null;
+    clanHandle?: string | null;
 }, actorId?: string): Promise<{ error: string | null }> {
     const birthYear = person.birthDate ? new Date(person.birthDate).getFullYear() : null;
     const deathYear = person.deathDate ? new Date(person.deathDate).getFullYear() : null;
@@ -401,6 +430,7 @@ export async function addPerson(person: {
             parent_families: person.parentFamilies || [],
             zalo: person.zalo || null,
             facebook: person.facebook || null,
+            clan_handle: person.clanHandle || null,
         });
 
     if (error) {
@@ -632,6 +662,7 @@ export async function addFamily(family: {
     fatherHandle?: string;
     motherHandle?: string;
     children?: string[];
+    clanHandle?: string | null;
 }, actorId?: string): Promise<{ error: string | null }> {
     const { error } = await supabase
         .from('families')
@@ -640,6 +671,7 @@ export async function addFamily(family: {
             father_handle: family.fatherHandle || null,
             mother_handle: family.motherHandle || null,
             children: family.children || [],
+            clan_handle: family.clanHandle || null,
         });
 
     if (error) {

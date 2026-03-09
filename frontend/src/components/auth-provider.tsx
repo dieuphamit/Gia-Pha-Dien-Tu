@@ -14,6 +14,7 @@ interface Profile {
     person_handle: string | null;
     avatar_url: string | null;
     status?: string;
+    clan_access: string[] | null; // null = super-admin (all clans); [] = no access
 }
 
 interface AuthState {
@@ -28,6 +29,8 @@ interface AuthState {
     canManage: boolean;    // chỉ admin: phân quyền, xóa tài khoản
     isMember: boolean;
     isLoggedIn: boolean;
+    accessibleClans: string[] | null; // null = all clans (admin); array = specific clans
+    hasAccessToClan: (clanHandle: string) => boolean;
     signIn: (email: string, password: string) => Promise<{ error?: string }>;
     signUp: (email: string, password: string, displayName?: string) => Promise<{ error?: string }>;
     signOut: () => Promise<void>;
@@ -171,16 +174,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [user, fetchProfile]);
 
     const role = profile?.role ?? null;
+    const isAdminRole = role === 'admin';
+    // Admin has access to all clans (null = unrestricted); others use their whitelist
+    const accessibleClans = isAdminRole ? null : (profile?.clan_access ?? []);
+    const hasAccessToClan = (clanHandle: string) => {
+        if (isAdminRole) return true;
+        return (profile?.clan_access ?? []).includes(clanHandle);
+    };
 
     return (
         <AuthContext.Provider value={{
             user, session, profile, role, loading,
-            isAdmin: role === 'admin',
+            isAdmin: isAdminRole,
             isEditor: role === 'editor',
             canEdit: role === 'admin' || role === 'editor',
             canManage: role === 'admin',
             isMember: role === 'member',
             isLoggedIn: !!user,
+            accessibleClans,
+            hasAccessToClan,
             signIn, signUp, signOut, refreshProfile,
         }}>
             {children}

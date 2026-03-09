@@ -26,6 +26,7 @@ export interface TreeNode {
     families: string[];
     parentFamilies: string[];
     avatarUrl?: string;
+    clanHandle?: string;
 }
 
 export interface TreeFamily {

@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 import {
     fetchTreeData,
+    fetchClans,
     updateFamilyChildren as supaUpdateFamilyChildren,
     moveChildToFamily as supaMoveChild,
     removeChildFromFamily as supaRemoveChild,
@@ -191,7 +192,12 @@ export default function TreeViewPage() {
     // Editor mode state
     const [editorMode, setEditorMode] = useState(false);
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
-    const { isAdmin, canEdit } = useAuth();
+    const { isAdmin, canEdit, accessibleClans } = useAuth();
+
+    // Multi-clan state
+    const [selectedClan, setSelectedClan] = useState<string | null>(null);
+    const [availableClans, setAvailableClans] = useState<Array<{ handle: string; displayName: string }>>([]);
+    const clanInitialized = useRef(false);
 
     // URL query param initialization + auto-collapse on initial load
     const urlInitialized = useRef(false);
@@ -252,15 +258,34 @@ export default function TreeViewPage() {
         }
     }, [searchParams, treeData]);
 
-    // Sync URL when view/focus changes
+    // Sync URL when view/focus/clan changes
     useEffect(() => {
         if (!urlInitialized.current) return;
         const params = new URLSearchParams();
         if (viewMode !== 'full') params.set('view', viewMode);
         if (focusPerson && viewMode !== 'full') params.set('person', focusPerson);
+        if (selectedClan) params.set('clan', selectedClan);
         const qs = params.toString();
         router.replace(`/tree${qs ? '?' + qs : ''}`, { scroll: false });
-    }, [viewMode, focusPerson, router]);
+    }, [viewMode, focusPerson, selectedClan, router]);
+
+    // Load available clans and initialize selectedClan from URL param or first accessible
+    useEffect(() => {
+        if (clanInitialized.current) return;
+        fetchClans().then(allClans => {
+            const accessible = accessibleClans === null
+                ? allClans
+                : allClans.filter(c => accessibleClans.includes(c.handle));
+            setAvailableClans(accessible);
+            if (accessible.length === 0) return;
+            const clanParam = searchParams.get('clan');
+            const defaultClan = (clanParam && accessible.some(c => c.handle === clanParam))
+                ? clanParam
+                : accessible[0].handle;
+            setSelectedClan(defaultClan);
+            clanInitialized.current = true;
+        });
+    }, [accessibleClans, searchParams]);
 
     // Transform state
     const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -272,9 +297,12 @@ export default function TreeViewPage() {
     const transformRef = useRef({ x: 0, y: 0, scale: 1 });
     useEffect(() => { transformRef.current = transform; }, [transform]);
 
-    // Fetch data
+    // Fetch data — re-runs whenever selectedClan changes
     useEffect(() => {
+        if (!clanInitialized.current && availableClans.length === 0) return; // wait for clan init
         const fetchTree = async () => {
+            setLoading(true);
+            urlInitialized.current = false; // reset so URL params re-apply after reload
             try {
                 const token = localStorage.getItem('accessToken');
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -291,9 +319,9 @@ export default function TreeViewPage() {
                     }
                 }
             } catch { /* fallback */ }
-            // Load from Supabase
+            // Load from Supabase, filtered by selected clan
             try {
-                const data = await fetchTreeData();
+                const data = await fetchTreeData(selectedClan ?? undefined);
                 if (data.people.length > 0) {
                     setTreeData(data);
                     setLoading(false);
@@ -305,7 +333,7 @@ export default function TreeViewPage() {
             setLoading(false);
         };
         fetchTree();
-    }, []);
+    }, [selectedClan, availableClans]);
 
     // Filtered data for view mode
     const displayData = useMemo(() => {
@@ -775,19 +803,38 @@ export default function TreeViewPage() {
         <div className="flex flex-col h-[calc(100vh-80px)]">
             {/* Header */}
             <div className="flex items-center justify-between flex-wrap gap-2 px-1 pb-2">
-                <div>
-                    <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                        <TreePine className="h-5 w-5" /> Cây gia phả
-                    </h1>
-                    <p className="text-muted-foreground text-xs">
-                        {layout ? `${layout.nodes.length} thành viên` : 'Đang tải...'}
-                        {viewMode !== 'full' && focusPerson && (
-                            <span className="ml-1 text-blue-500">
-                                • {viewMode === 'ancestor' ? 'Tổ tiên' : 'Hậu duệ'} của{' '}
-                                {treeData?.people.find(p => p.handle === focusPerson)?.displayName}
-                            </span>
-                        )}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <div>
+                        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+                            <TreePine className="h-5 w-5" /> Cây gia phả
+                        </h1>
+                        <p className="text-muted-foreground text-xs">
+                            {layout ? `${layout.nodes.length} thành viên` : 'Đang tải...'}
+                            {viewMode !== 'full' && focusPerson && (
+                                <span className="ml-1 text-blue-500">
+                                    • {viewMode === 'ancestor' ? 'Tổ tiên' : 'Hậu duệ'} của{' '}
+                                    {treeData?.people.find(p => p.handle === focusPerson)?.displayName}
+                                </span>
+                            )}
+                        </p>
+                    </div>
+                    {availableClans.length > 1 && (
+                        <select
+                            value={selectedClan ?? ''}
+                            onChange={e => {
+                                setSelectedClan(e.target.value);
+                                setTreeData(null);
+                                setFocusPerson(null);
+                                setViewMode('full');
+                            }}
+                            className="h-8 rounded-md border px-2 text-sm bg-background text-foreground cursor-pointer"
+                            title="Chọn dòng họ"
+                        >
+                            {availableClans.map(c => (
+                                <option key={c.handle} value={c.handle}>{c.displayName}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                     {/* View modes */}
@@ -1042,7 +1089,7 @@ export default function TreeViewPage() {
                             supaUpdatePerson(handle, fields);
                         }}
                         onReset={async () => {
-                            const data = await fetchTreeData();
+                            const data = await fetchTreeData(selectedClan ?? undefined);
                             setTreeData(data);
                         }}
                         onClose={() => { setEditorMode(false); setSelectedCard(null); }}

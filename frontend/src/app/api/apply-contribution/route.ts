@@ -179,6 +179,26 @@ async function applyAddPerson(
     const deathYear = payload.deathYear ||
         (payload.deathDate ? new Date(payload.deathDate).getFullYear() : null);
 
+    // Inherit clan_handle from related person/family
+    let clanHandle: string | null = null;
+    const relatedPersonHandle = contribution.person_handle as string | null;
+    if (relatedPersonHandle) {
+        const { data: relPerson } = await serviceClient
+            .from('people')
+            .select('clan_handle')
+            .eq('handle', relatedPersonHandle)
+            .maybeSingle();
+        clanHandle = (relPerson as { clan_handle: string | null } | null)?.clan_handle ?? null;
+    }
+    if (!clanHandle && payload.parentFamilyHandle) {
+        const { data: relFamily } = await serviceClient
+            .from('families')
+            .select('clan_handle')
+            .eq('handle', payload.parentFamilyHandle)
+            .maybeSingle();
+        clanHandle = (relFamily as { clan_handle: string | null } | null)?.clan_handle ?? null;
+    }
+
     const { data, error } = await serviceClient
         .from('people')
         .insert({
@@ -202,6 +222,7 @@ async function applyAddPerson(
             avatar_url: payload.avatarUrl || null,
             families: [],
             parent_families: [],
+            clan_handle: clanHandle,
         })
         .select('handle')
         .single();
@@ -243,7 +264,7 @@ async function applyAddPerson(
         const { generateFamilyHandle, addFamily, addPersonAsSpouse } = await import('@/lib/supabase-data');
         const famHandle = await generateFamilyHandle();
         const role = (payload.gender ?? 1) === 1 ? 'father' : 'mother';
-        await addFamily({ handle: famHandle, fatherHandle: role === 'father' ? handle : undefined, motherHandle: role === 'mother' ? handle : undefined });
+        await addFamily({ handle: famHandle, fatherHandle: role === 'father' ? handle : undefined, motherHandle: role === 'mother' ? handle : undefined, clanHandle });
         await addPersonAsSpouse(handle, famHandle, role);
         for (const childHandle of payload.childrenHandles) {
             await linkChild(childHandle, famHandle);
@@ -263,7 +284,8 @@ async function applyAddPerson(
             handle: familyHandle,
             fatherHandle,
             motherHandle,
-            children: []
+            children: [],
+            clanHandle,
         });
 
         if (!famError) {

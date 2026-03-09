@@ -36,6 +36,13 @@ import { insertAuditLog } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 
+const CLAN_LABELS: Record<string, string> = {
+    pham: 'Họ Phạm',
+    ngo: 'Họ Ngô',
+    dinh: 'Họ Đinh',
+};
+const ALL_CLAN_HANDLES = ['pham', 'ngo', 'dinh'];
+
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     editor: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
@@ -55,6 +62,7 @@ interface ProfileUser {
     role: string;
     status: string;
     created_at: string;
+    clan_access: string[] | null;
 }
 
 interface InviteLink {
@@ -220,6 +228,30 @@ export default function AdminUsersPage() {
             }
         }
     }, [users, currentUser]);
+
+    const [clanDialogUser, setClanDialogUser] = useState<ProfileUser | null>(null);
+    const [clanDialogOpen, setClanDialogOpen] = useState(false);
+    const [pendingClanAccess, setPendingClanAccess] = useState<string[]>([]);
+
+    const openClanDialog = useCallback((user: ProfileUser) => {
+        setClanDialogUser(user);
+        setPendingClanAccess(user.clan_access ?? []);
+        setClanDialogOpen(true);
+    }, []);
+
+    const handleSaveClanAccess = useCallback(async () => {
+        if (!clanDialogUser) return;
+        const { error } = await supabase
+            .from('profiles')
+            .update({ clan_access: pendingClanAccess })
+            .eq('id', clanDialogUser.id);
+        if (!error) {
+            setUsers(prev => prev.map(u =>
+                u.id === clanDialogUser.id ? { ...u, clan_access: pendingClanAccess } : u
+            ));
+            setClanDialogOpen(false);
+        }
+    }, [clanDialogUser, pendingClanAccess]);
 
     const handleCopy = useCallback(async (text: string) => {
         try {
@@ -405,6 +437,7 @@ export default function AdminUsersPage() {
                                     <TableHead>Email</TableHead>
                                     <TableHead>Quyền</TableHead>
                                     <TableHead>Trạng thái</TableHead>
+                                    <TableHead>Dòng họ</TableHead>
                                     <TableHead>Ngày tham gia</TableHead>
                                     <TableHead className="w-12"></TableHead>
                                 </TableRow>
@@ -421,6 +454,19 @@ export default function AdminUsersPage() {
                                         </TableCell>
                                         <TableCell>
                                             <StatusBadge status={user.status} />
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.role === 'admin' ? (
+                                                <span className="text-xs text-muted-foreground">Tất cả</span>
+                                            ) : (user.clan_access ?? []).length === 0 ? (
+                                                <span className="text-xs text-muted-foreground italic">Chưa gán</span>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {(user.clan_access ?? []).map(c => (
+                                                        <Badge key={c} variant="outline" className="text-xs">{CLAN_LABELS[c] ?? c}</Badge>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>{new Date(user.created_at).toLocaleDateString('vi-VN')}</TableCell>
                                         <TableCell>
@@ -457,6 +503,14 @@ export default function AdminUsersPage() {
                                                     <DropdownMenuItem onClick={() => handleChangeRole(user.id, 'member')}>
                                                         🟢 Đặt Thành viên
                                                     </DropdownMenuItem>
+                                                    {user.role !== 'admin' && (
+                                                        <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onClick={() => openClanDialog(user)}>
+                                                                🏡 Gán dòng họ
+                                                            </DropdownMenuItem>
+                                                        </>
+                                                    )}
                                                     {user.status !== 'pending' && (
                                                         <>
                                                             <DropdownMenuSeparator />
@@ -547,6 +601,41 @@ export default function AdminUsersPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Clan Access Dialog */}
+            <Dialog open={clanDialogOpen} onOpenChange={open => { if (!open) setClanDialogOpen(false); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Gán dòng họ</DialogTitle>
+                        <DialogDescription>
+                            Chọn các dòng họ mà {clanDialogUser?.display_name || clanDialogUser?.email} được phép xem.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 mt-4">
+                        {ALL_CLAN_HANDLES.map(handle => (
+                            <label key={handle} className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300"
+                                    checked={pendingClanAccess.includes(handle)}
+                                    onChange={e => {
+                                        setPendingClanAccess(prev =>
+                                            e.target.checked
+                                                ? [...prev, handle]
+                                                : prev.filter(c => c !== handle)
+                                        );
+                                    }}
+                                />
+                                <span className="text-sm font-medium">{CLAN_LABELS[handle] ?? handle}</span>
+                            </label>
+                        ))}
+                        <div className="flex gap-2 pt-2">
+                            <Button className="flex-1" onClick={handleSaveClanAccess}>Lưu</Button>
+                            <Button variant="outline" onClick={() => setClanDialogOpen(false)}>Hủy</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
