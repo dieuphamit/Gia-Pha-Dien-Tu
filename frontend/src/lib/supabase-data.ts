@@ -130,10 +130,40 @@ export async function fetchFamilies(clanHandle?: string): Promise<TreeFamily[]> 
     return (data || []).map(dbRowToTreeFamily);
 }
 
-/** Fetch both people and families in parallel, optionally filtered by clan */
+/** Fetch both people and families, optionally filtered by clan.
+ *  When filtering by clan, families are resolved from the people's
+ *  referenced family handles so multi-clan people remain connected. */
 export async function fetchTreeData(clanHandle?: string): Promise<{ people: TreeNode[]; families: TreeFamily[] }> {
-    const [people, families] = await Promise.all([fetchPeople(clanHandle), fetchFamilies(clanHandle)]);
-    return { people, families };
+    if (!clanHandle) {
+        const [people, families] = await Promise.all([fetchPeople(), fetchFamilies()]);
+        return { people, families };
+    }
+
+    // 1. Fetch people belonging to this clan
+    const people = await fetchPeople(clanHandle);
+
+    // 2. Collect every family handle referenced by those people
+    const familyHandles = new Set<string>();
+    for (const p of people) {
+        p.families.forEach(h => familyHandles.add(h));
+        p.parentFamilies.forEach(h => familyHandles.add(h));
+    }
+
+    if (familyHandles.size === 0) return { people, families: [] };
+
+    // 3. Fetch families by their handles (covers cross-clan families of multi-clan people)
+    const { data, error } = await supabase
+        .from('families')
+        .select('handle, father_handle, mother_handle, children')
+        .in('handle', Array.from(familyHandles))
+        .order('handle');
+
+    if (error) {
+        console.error('Failed to fetch families:', error.message);
+        return { people, families: [] };
+    }
+
+    return { people, families: (data || []).map(dbRowToTreeFamily) };
 }
 
 /** Fetch all clans from Supabase */

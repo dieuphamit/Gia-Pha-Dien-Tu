@@ -33,6 +33,7 @@ interface Person {
     isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
     clanHandle: string | null;
+    clanHandles: string[];
 }
 
 const CLAN_LABELS: Record<string, string> = { pham: 'Họ Phạm', ngo: 'Họ Ngô', dinh: 'Họ Đinh' };
@@ -115,7 +116,7 @@ export default function PeopleListPage() {
             const { supabase } = await import('@/lib/supabase');
             const { data, error } = await supabase
                 .from('people')
-                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, clan_handle');
+                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, clan_handle, clan_handles');
             if (!error && data) {
                 setPeople(data.map((row: Record<string, unknown>) => ({
                     handle: row.handle as string,
@@ -129,6 +130,7 @@ export default function PeopleListPage() {
                     isPatrilineal: (row.is_patrilineal as boolean) ?? false,
                     isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
                     clanHandle: (row.clan_handle as string | null) ?? null,
+                    clanHandles: (row.clan_handles as string[] | null) ?? [],
                 })));
             }
         } catch { /* ignore */ }
@@ -153,7 +155,7 @@ export default function PeopleListPage() {
             if (search && !p.displayName.toLowerCase().includes(search.toLowerCase())) return false;
             if (genderFilter !== null && p.gender !== genderFilter) return false;
             if (livingFilter !== null && p.isLiving !== livingFilter) return false;
-            if (clanFilter !== 'all' && p.clanHandle !== clanFilter) return false;
+            if (clanFilter !== 'all' && !p.clanHandles.includes(clanFilter)) return false;
             return true;
         });
 

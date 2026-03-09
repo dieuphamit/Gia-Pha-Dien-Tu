@@ -64,7 +64,7 @@ function computeBranchSummary(
         if (gen < minGen) minGen = gen;
         if (gen > maxGen) maxGen = gen;
         if (person.isLiving) livingCount++; else deceasedCount++;
-        if (person.isPatrilineal) patrilinealCount++;
+        if (person.tocType === 'chinh') patrilinealCount++;
         for (const fId of person.families) {
             const fam = familyMap.get(fId);
             if (!fam) continue;
@@ -118,7 +118,7 @@ function computeTreeStats(nodes: PositionedNode[], families: TreeFamily[]): Tree
         const gen = n.generation + 1;
         genMap.set(gen, (genMap.get(gen) ?? 0) + 1);
         if (n.node.isLiving) living++; else deceased++;
-        if (n.node.isPatrilineal) patri++; else nonPatri++;
+        if (n.node.tocType === 'chinh') patri++; else nonPatri++;
     }
     const perGeneration = Array.from(genMap.entries())
         .map(([gen, count]) => ({ gen, count }))
@@ -142,7 +142,7 @@ const AUTO_COLLAPSE_GEN = 8;
 function computePersonGenerations(people: TreeNode[], families: TreeFamily[]): Map<string, number> {
     const childOf = new Set<string>();
     for (const f of families) for (const ch of f.children) childOf.add(ch);
-    const roots = people.filter(p => p.isPatrilineal && !childOf.has(p.handle));
+    const roots = people.filter(p => p.tocType === 'chinh' && !childOf.has(p.handle));
     const gens = new Map<string, number>();
     const familyMap = new Map(families.map(f => [f.handle, f]));
     const queue: { handle: string; gen: number }[] = roots.map(r => ({ handle: r.handle, gen: 0 }));
@@ -1146,9 +1146,9 @@ function CardContextMenu({ person, x, y, onViewDetail, onShowDescendants, onShow
                 <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-                            ${person.isPatrilineal
+                            ${person.tocType === 'chinh'
                                 ? (person.gender === 1 ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700')
-                                : person.isAffiliatedFamily
+                                : person.tocType === 'than'
                                     ? 'bg-teal-100 text-teal-700'
                                     : 'bg-slate-100 text-slate-500'}`}>
                             {person.displayName.split(' ').map(w => w[0]).join('').slice(0, 2)}
@@ -1223,8 +1223,8 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
     const isMale = node.gender === 1;
     const isFemale = node.gender === 2;
     const isDead = !node.isLiving;
-    const isPatri = node.isPatrilineal;
-    const isAffiliated = !isPatri && (node.isAffiliatedFamily ?? false);
+    const isPatri = node.tocType === 'chinh';
+    const isAffiliated = node.tocType === 'than';
 
     // ── Color system (3 tầng: patrilineal / affiliated / ngoại tộc) ──
     const dotColor = isPatri
