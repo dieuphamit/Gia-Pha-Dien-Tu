@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
     Home,
     TreePine,
@@ -27,6 +27,8 @@ import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { fetchClans } from '@/lib/supabase-data';
+import { BookClanSelectorDialog } from '@/components/book-clan-selector-dialog';
 
 const navItems = [
     { href: '/', label: 'Trang chủ', icon: Home },
@@ -69,8 +71,11 @@ function PendingBadge({ count, collapsed }: { count: number; collapsed: boolean 
 
 export function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter();
     const [collapsed, setCollapsed] = useState(false);
-    const { isAdmin, canEdit, isLoggedIn, user } = useAuth();
+    const { isAdmin, canEdit, isLoggedIn, user, accessibleClans } = useAuth();
+    const [bookClans, setBookClans] = useState<Array<{ handle: string; displayName: string }>>([]);
+    const [bookDialogOpen, setBookDialogOpen] = useState(false);
     const [pendingCount, setPendingCount] = useState(0);
     const [pendingUsersCount, setPendingUsersCount] = useState(0);
     const [openBugsCount, setOpenBugsCount] = useState(0);
@@ -256,6 +261,27 @@ export function Sidebar() {
         return () => { supabase.removeChannel(channel); };
     }, [isAdmin]);
 
+    // Load accessible clans for book selector
+    useEffect(() => {
+        if (!isLoggedIn) return;
+        fetchClans().then((all) => {
+            const accessible = isAdmin
+                ? all
+                : all.filter((c) => (accessibleClans ?? []).includes(c.handle));
+            setBookClans(accessible);
+        });
+    }, [isLoggedIn, isAdmin, accessibleClans]);
+
+    function handleBookClick() {
+        if (bookClans.length === 0) return;
+        const needsPopup = isAdmin || bookClans.length >= 2;
+        if (needsPopup) {
+            setBookDialogOpen(true);
+        } else {
+            router.push(`/book?clan=${bookClans[0].handle}`);
+        }
+    }
+
     const renderNavItem = (item: { href: string; label: string; icon: React.ElementType }, badgeCount = 0) => {
         const isActive = pathname.startsWith(item.href);
         const Icon = item.icon;
@@ -300,6 +326,26 @@ export function Sidebar() {
                             item.href === '/media' && canEdit ? pendingMediaCount :
                             item.href === '/feed' ? unreadFeedCount :
                             item.href === '/events' ? unreadEventsCount : 0;
+
+                        // Sách gia phả: dùng button để hiện popup chọn clan
+                        if (item.href === '/book') {
+                            return (
+                                <button key={item.href} onClick={handleBookClick} className="w-full text-left">
+                                    <span
+                                        className={cn(
+                                            'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                                            isActive
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                                        )}
+                                    >
+                                        <item.icon className="h-4 w-4 shrink-0" />
+                                        {!collapsed && item.label}
+                                    </span>
+                                </button>
+                            );
+                        }
+
                         return (
                             <Link key={item.href} href={item.href}>
                                 <span
@@ -378,6 +424,13 @@ export function Sidebar() {
                     {!collapsed && <span className="ml-2">Thu gọn</span>}
                 </Button>
             </div>
+
+            <BookClanSelectorDialog
+                open={bookDialogOpen}
+                clans={bookClans}
+                onSelect={(handle) => router.push(`/book?clan=${handle}`)}
+                onClose={() => setBookDialogOpen(false)}
+            />
         </aside>
     );
 }

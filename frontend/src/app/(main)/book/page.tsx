@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Printer, ArrowLeft, BookOpen, Eye, Palette, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fetchTreeData } from '@/lib/supabase-data';
+import { fetchTreeData, fetchClans } from '@/lib/supabase-data';
 import { generateBookData, type BookData, type BookPerson, type BookChapter } from '@/lib/book-generator';
 import { formatDateVN } from '@/components/ui/date-input';
 import type { TreeNode, TreeFamily } from '@/lib/tree-layout';
@@ -52,6 +53,24 @@ const THEMES: Record<string, Theme> = {
 type ThemeKey = keyof typeof THEMES;
 
 export default function BookPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-pulse text-muted-foreground flex items-center gap-2">
+                    <BookOpen className="w-5 h-5" />
+                    <span>Đang tải sách gia phả...</span>
+                </div>
+            </div>
+        }>
+            <BookPageContent />
+        </Suspense>
+    );
+}
+
+function BookPageContent() {
+    const searchParams = useSearchParams();
+    const clanHandle = searchParams.get('clan') ?? undefined;
+
     const [bookData, setBookData] = useState<BookData | null>(null);
     const [loading, setLoading] = useState(true);
     const [previewMode, setPreviewMode] = useState(false);
@@ -72,11 +91,19 @@ export default function BookPage() {
         const fetchAndGenerate = async () => {
             let people: TreeNode[] = [];
             let families: TreeFamily[] = [];
+            let familyName = 'Dòng Họ';
             try {
-                const treeData = await fetchTreeData();
+                const [treeData, allClans] = await Promise.all([
+                    fetchTreeData(clanHandle),
+                    fetchClans(),
+                ]);
                 if (treeData.people.length > 0) {
                     people = treeData.people;
                     families = treeData.families;
+                }
+                const clan = allClans.find((c) => c.handle === clanHandle);
+                if (clan) {
+                    familyName = clan.displayName;
                 }
             } catch { /* fallback */ }
             // Fallback: use mock data when Supabase is not configured
@@ -86,13 +113,15 @@ export default function BookPage() {
                 people = mock.people;
                 families = mock.families;
             }
-            const familyName = people.length > 0 ? (people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ') : 'Dòng Họ';
+            if (familyName === 'Dòng Họ' && people.length > 0) {
+                familyName = people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ';
+            }
             const data = generateBookData(people, families, familyName);
             setBookData(data);
             setLoading(false);
         };
         fetchAndGenerate();
-    }, []);
+    }, [clanHandle]);
 
     if (loading) {
         return (
