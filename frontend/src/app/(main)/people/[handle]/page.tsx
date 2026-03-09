@@ -713,14 +713,6 @@ export default function PersonProfilePage() {
                                 <Input value={form.displayName} onChange={set('displayName')} placeholder="Nguyễn Văn A" />
                             </div>
                             <div>
-                                <label className="text-sm font-medium leading-none">Họ</label>
-                                <Input value={form.surname} onChange={set('surname')} placeholder="Nguyễn" />
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium leading-none">Tên</label>
-                                <Input value={form.firstName} onChange={set('firstName')} placeholder="Văn A" />
-                            </div>
-                            <div>
                                 <label className="text-sm font-medium leading-none">Tên thường gọi</label>
                                 <Input value={form.nickName} onChange={set('nickName')} placeholder="Tên gọi ở nhà" />
                             </div>
@@ -1109,8 +1101,6 @@ export default function PersonProfilePage() {
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="grid gap-4 md:grid-cols-2">
-                                <InfoRow label="Họ" value={person.surname || '—'} />
-                                <InfoRow label="Tên" value={person.firstName || '—'} />
                                 <InfoRow label="Giới tính" value={genderLabel} />
                                 <div>
                                     <p className="text-xs font-medium text-muted-foreground">Họ tộc</p>
