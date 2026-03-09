@@ -4,7 +4,7 @@
  */
 import type { TreeNode, TreeFamily } from './tree-layout';
 
-export const MOCK_PEOPLE: TreeNode[] = [
+const RAW_MOCK_PEOPLE = [
     // ── Đời 1 ──────────────────────────────────────────────
     { handle: 'P001', displayName: 'Phạm Hướng',             gender: 1, generation: 1, birthYear: 1920, deathYear: 1995, isLiving: false, isPrivacyFiltered: false, isPatrilineal: true,  families: ['F001'],  parentFamilies: [] },
 
@@ -45,6 +45,12 @@ export const MOCK_PEOPLE: TreeNode[] = [
     { handle: 'P022', displayName: 'Nguyễn Ngọc Châu Anh',  gender: 2, generation: 5, birthYear: 2017, isLiving: true,  isPrivacyFiltered: false, isPatrilineal: false, families: [],        parentFamilies: ['F008'] },
     { handle: 'P023', displayName: 'Nguyễn Ngọc Linh Đan',  gender: 2, generation: 5, birthYear: 2021, isLiving: true,  isPrivacyFiltered: false, isPatrilineal: false, families: [],        parentFamilies: ['F008'] },
 ];
+
+export const MOCK_PEOPLE: TreeNode[] = RAW_MOCK_PEOPLE.map(p => ({
+    ...p,
+    tocType: p.isPatrilineal ? 'chinh' : (p.parentFamilies.length > 0 ? 'than' : 'ngoai'),
+    tocOverride: false,
+} as TreeNode));
 
 export const MOCK_FAMILIES: TreeFamily[] = [
     { handle: 'F001', fatherHandle: 'P001',                         children: ['P002'] },

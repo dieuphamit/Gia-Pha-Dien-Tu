@@ -67,8 +67,11 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         generation: row.generation as number,
         isLiving: row.is_living as boolean,
         isPrivacyFiltered: row.is_privacy_filtered as boolean,
-        isPatrilineal: row.is_patrilineal as boolean,
-        isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
+        tocType: (row.toc_type as 'chinh' | 'than' | 'ngoai') ?? 'ngoai',
+        tocOverride: (row.toc_override as boolean) ?? false,
+        // backward-compat: derived from tocType
+        isPatrilineal: (row.toc_type ?? row.is_patrilineal) === 'chinh' || (row.toc_type == null && row.is_patrilineal === true),
+        isAffiliatedFamily: (row.toc_type ?? '') === 'than' || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
         families: (row.families as string[]) || [],
         parentFamilies: (row.parent_families as string[]) || [],
         avatarUrl: (row.avatar_url as string | null) ?? undefined,
@@ -92,7 +95,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
     let query = supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url, clan_handle, clan_handles')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, toc_type, toc_override, families, parent_families, avatar_url, clan_handle, clan_handles')
         .order('generation')
         .order('handle');
 
@@ -311,6 +314,8 @@ type PersonUpdateFields = {
     biography?: string | null;
     isAffiliatedFamily?: boolean;
     isPatrilineal?: boolean;
+    tocType?: 'chinh' | 'than' | 'ngoai';
+    tocOverride?: boolean;
     clanHandle?: string | null;
     clanHandles?: string[];
 };
@@ -353,6 +358,8 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.biography !== undefined) dbFields.biography = fields.biography;
     if (fields.isAffiliatedFamily !== undefined) dbFields.is_affiliated_family = fields.isAffiliatedFamily;
     if (fields.isPatrilineal !== undefined) dbFields.is_patrilineal = fields.isPatrilineal;
+    if (fields.tocType !== undefined) dbFields.toc_type = fields.tocType;
+    if (fields.tocOverride !== undefined) dbFields.toc_override = fields.tocOverride;
     if (fields.clanHandle !== undefined) dbFields.clan_handle = fields.clanHandle;
     if (fields.clanHandles !== undefined) {
         dbFields.clan_handles = fields.clanHandles;
@@ -549,8 +556,7 @@ export async function addPersonAsChild(personHandle: string, familyHandle: strin
         if (r2.error) return r2;
     }
 
-    // Có gia đình cha mẹ → tự động đánh dấu là thân tộc
-    await supabase.from('people').update({ is_patrilineal: true }).eq('handle', personHandle);
+    // Trigger tự động tính lại toc_type khi parent_families thay đổi
 
     if (actorId) {
         insertAuditLog({

@@ -44,6 +44,8 @@ interface EditForm {
     birthDate: string; // ISO DATE: "YYYY-MM-DD"
     deathDate: string; // ISO DATE: "YYYY-MM-DD"
     isLiving: boolean;
+    tocType: 'chinh' | 'than' | 'ngoai';
+    tocOverride: boolean;
     isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
     clanHandles: string[];
@@ -103,7 +105,7 @@ export default function PersonProfilePage() {
 
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
-        birthDate: '', deathDate: '', isLiving: true, isPatrilineal: false, isAffiliatedFamily: false,
+        birthDate: '', deathDate: '', isLiving: true, tocType: 'ngoai', tocOverride: false, isPatrilineal: false, isAffiliatedFamily: false,
         clanHandles: ['pham'],
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
@@ -136,8 +138,10 @@ export default function PersonProfilePage() {
                     generation: row.generation as number,
                     isLiving: row.is_living as boolean,
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
-                    isPatrilineal: row.is_patrilineal as boolean,
-                    isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
+                    tocType: (row.toc_type as 'chinh' | 'than' | 'ngoai') ?? 'ngoai',
+                    tocOverride: (row.toc_override as boolean) ?? false,
+                    isPatrilineal: (row.toc_type === 'chinh') || (row.toc_type == null && row.is_patrilineal === true),
+                    isAffiliatedFamily: (row.toc_type === 'than') || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
                     families: (row.families as string[]) || [],
                     parentFamilies: (row.parent_families as string[]) || [],
                     phone: row.phone as string | undefined,
@@ -222,6 +226,8 @@ export default function PersonProfilePage() {
             birthDate: person.birthDate || '',
             deathDate: person.deathDate || '',
             isLiving: person.isLiving,
+            tocType: person.tocType ?? 'ngoai',
+            tocOverride: person.tocOverride ?? false,
             isPatrilineal: person.isPatrilineal ?? false,
             isAffiliatedFamily: person.isAffiliatedFamily ?? false,
             clanHandles: personClanHandle,
@@ -309,6 +315,8 @@ export default function PersonProfilePage() {
             birthDate: form.birthDate || null,
             deathDate: form.deathDate || null,
             isLiving: form.isLiving,
+            tocType: form.tocType,
+            tocOverride: form.tocOverride,
             isPatrilineal: form.isPatrilineal,
             isAffiliatedFamily: form.isAffiliatedFamily,
             clanHandles: form.clanHandles.length > 0 ? form.clanHandles : ['pham'],
@@ -574,8 +582,7 @@ export default function PersonProfilePage() {
                             avatarUrl={person.avatarUrl}
                             displayName={person.displayName}
                             gender={person.gender}
-                            isPatrilineal={person.isPatrilineal}
-                            isAffiliatedFamily={person.isAffiliatedFamily}
+                            tocType={person.tocType}
                             isLiving={person.isLiving}
                             size="xl"
                         />
@@ -667,8 +674,7 @@ export default function PersonProfilePage() {
                                     avatarUrl={person.avatarUrl}
                                     displayName={person.displayName}
                                     gender={person.gender}
-                                    isPatrilineal={person.isPatrilineal}
-                                    isAffiliatedFamily={person.isAffiliatedFamily}
+                                    tocType={person.tocType}
                                     isLiving={person.isLiving}
                                     size="lg"
                                 />
@@ -777,8 +783,7 @@ export default function PersonProfilePage() {
                                         { value: 'than',  label: 'Thân Tộc',  desc: 'Có thông tin cha mẹ', activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
                                         { value: 'ngoai', label: 'Ngoại Tộc', desc: 'Vợ/chồng lấy vào', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
                                     ].map(opt => {
-                                        const current = form.isPatrilineal ? 'chinh' : form.isAffiliatedFamily ? 'than' : 'ngoai';
-                                        const isSelected = current === opt.value;
+                                        const isSelected = form.tocType === opt.value;
                                         return (
                                             <Button
                                                 key={opt.value}
@@ -788,6 +793,8 @@ export default function PersonProfilePage() {
                                                 className={isSelected ? opt.activeClass : ''}
                                                 onClick={() => setForm(p => ({
                                                     ...p,
+                                                    tocType: opt.value as 'chinh' | 'than' | 'ngoai',
+                                                    tocOverride: true,
                                                     isPatrilineal: opt.value === 'chinh',
                                                     isAffiliatedFamily: opt.value === 'than',
                                                 }))}
@@ -1101,9 +1108,9 @@ export default function PersonProfilePage() {
                                 <InfoRow label="Giới tính" value={genderLabel} />
                                 <div>
                                     <p className="text-xs font-medium text-muted-foreground">Họ tộc</p>
-                                    {person.isPatrilineal ? (
+                                    {person.tocType === 'chinh' ? (
                                         <Badge className="bg-rose-600 text-white mt-0.5">Chính Tộc</Badge>
-                                    ) : (person.parentFamilies?.length ?? 0) > 0 || person.isAffiliatedFamily ? (
+                                    ) : person.tocType === 'than' ? (
                                         <Badge className="bg-teal-600 text-white mt-0.5">Thân Tộc</Badge>
                                     ) : (
                                         <Badge variant="secondary" className="mt-0.5">Ngoại Tộc</Badge>

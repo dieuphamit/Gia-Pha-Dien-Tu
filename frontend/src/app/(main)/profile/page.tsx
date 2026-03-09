@@ -35,6 +35,7 @@ interface PersonData {
     gender: number;
     is_living: boolean;
     is_patrilineal: boolean;
+    toc_type?: 'chinh' | 'than' | 'ngoai';
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -274,7 +275,7 @@ export default function ProfilePage() {
                                     avatarUrl={personData.avatar_url}
                                     displayName={personData.display_name}
                                     gender={personData.gender}
-                                    isPatrilineal={personData.is_patrilineal}
+                                    tocType={(personData.toc_type as 'chinh' | 'than' | 'ngoai') ?? (personData.is_patrilineal ? 'chinh' : 'ngoai')}
                                     isLiving={personData.is_living}
                                     size="lg"
                                 />

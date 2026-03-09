@@ -20,7 +20,11 @@ export interface PersonDetail {
     deathPlace?: string;
     isLiving: boolean;
     isPrivacyFiltered: boolean;
+    tocType: 'chinh' | 'than' | 'ngoai';
+    tocOverride: boolean;
+    /** @deprecated dùng tocType === 'chinh' thay thế */
     isPatrilineal: boolean;
+    /** @deprecated dùng tocType === 'than' thay thế */
     isAffiliatedFamily?: boolean;
     families?: string[];
     parentFamilies?: string[];

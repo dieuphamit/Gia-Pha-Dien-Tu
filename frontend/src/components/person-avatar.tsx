@@ -18,8 +18,7 @@ interface PersonAvatarProps {
     avatarUrl?: string | null;
     displayName: string;
     gender?: number;       // 1=Male, 2=Female
-    isPatrilineal?: boolean;
-    isAffiliatedFamily?: boolean;
+    tocType?: 'chinh' | 'than' | 'ngoai';
     isLiving?: boolean;
     size?: AvatarSize;
     className?: string;
@@ -33,14 +32,14 @@ function getInitials(displayName: string): string {
     return displayName.slice(0, 2).toUpperCase();
 }
 
-function getAvatarBg(gender: number, isPatrilineal: boolean, isAffiliated: boolean, isLiving: boolean): string {
+function getAvatarBg(gender: number, tocType: 'chinh' | 'than' | 'ngoai', isLiving: boolean): string {
     const isDead = !isLiving;
-    if (isPatrilineal) {
+    if (tocType === 'chinh') {
         if (gender === 1) return isDead ? 'bg-indigo-300 text-indigo-800' : 'bg-indigo-400 text-white';
         if (gender === 2) return isDead ? 'bg-rose-300 text-rose-800' : 'bg-rose-400 text-white';
         return 'bg-slate-300 text-slate-600';
     }
-    if (isAffiliated) {
+    if (tocType === 'than') {
         return isDead ? 'bg-teal-300 text-teal-800' : 'bg-teal-400 text-white';
     }
     return 'bg-stone-300 text-stone-600';
@@ -50,15 +49,14 @@ export function PersonAvatar({
     avatarUrl,
     displayName,
     gender = 1,
-    isPatrilineal = true,
-    isAffiliatedFamily = false,
+    tocType = 'chinh',
     isLiving = true,
     size = 'md',
     className = '',
 }: PersonAvatarProps) {
     const { px, text, font } = SIZE_MAP[size];
     const initials = getInitials(displayName);
-    const bgClass = getAvatarBg(gender, isPatrilineal, isAffiliatedFamily, isLiving);
+    const bgClass = getAvatarBg(gender, tocType, isLiving);
 
     const containerStyle: React.CSSProperties = {
         width: px,
