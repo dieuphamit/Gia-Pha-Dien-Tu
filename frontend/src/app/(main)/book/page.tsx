@@ -103,20 +103,28 @@ function BookPageContent() {
                 }
                 const clan = allClans.find((c) => c.handle === clanHandle);
                 if (clan) {
-                    familyName = clan.displayName;
+                    // Strip Vietnamese "Họ " prefix: 'Họ Phạm' → 'Phạm', 'Họ Ngô' → 'Ngô'
+                    familyName = clan.displayName.replace(/^Họ\s+/i, '');
                 }
             } catch { /* fallback */ }
-            // Fallback: use mock data when Supabase is not configured
-            if (people.length === 0) {
+            // Fallback to mock data ONLY when no specific clan is requested
+            // (i.e. dev environment without DB). If a clan was selected but has
+            // no data, show an empty state — never show another clan's data.
+            if (people.length === 0 && !clanHandle) {
                 const { getMockTreeData } = await import('@/lib/mock-data');
                 const mock = getMockTreeData();
                 people = mock.people;
                 families = mock.families;
             }
+            if (people.length === 0) {
+                setBookData(null);
+                setLoading(false);
+                return;
+            }
             if (familyName === 'Dòng Họ' && people.length > 0) {
                 familyName = people[0].displayName?.split(' ').slice(0, 2).join(' ') || 'Dòng Họ';
             }
-            const data = generateBookData(people, families, familyName);
+            const data = generateBookData(people, families, familyName, clanHandle);
             setBookData(data);
             setLoading(false);
         };
@@ -133,7 +141,19 @@ function BookPageContent() {
             </div>
         );
     }
-    if (!bookData) return null;
+    if (!bookData) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-4">
+                <BookOpen className="w-12 h-12 text-muted-foreground/40" />
+                <p className="text-lg font-medium text-muted-foreground">
+                    Chưa có dữ liệu gia phả cho dòng họ này
+                </p>
+                <p className="text-sm text-muted-foreground/60">
+                    Vui lòng thêm thành viên vào dòng họ trước khi xuất sách.
+                </p>
+            </div>
+        );
+    }
 
     // ═══ Dynamic height-based pagination ═══
     // A4 page: 297mm ≈ 1123px. Content area: px-12 py-12 = 48px each side

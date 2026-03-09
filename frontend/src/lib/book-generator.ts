@@ -79,9 +79,22 @@ export function generateBookData(
     people: TreeNode[],
     families: TreeFamily[],
     familyName: string = 'Phạm',
+    clanHandle?: string,
 ): BookData {
     const personMap = new Map(people.map(p => [p.handle, p]));
     const familyMap = new Map(families.map(f => [f.handle, f]));
+
+    // Determine if a person is a "main member" of this book.
+    // isPatrilineal is the primary criterion (correctly set for Phạm and any clan with proper data).
+    // Fallback: if the dataset has NO patrilineal members at all (e.g. a new clan whose data
+    // hasn't been tagged yet), treat everyone as main to avoid empty chapters.
+    const hasAnyPatrilineal = people.some(p => p.isPatrilineal);
+    const isMainMember = (p: TreeNode): boolean =>
+        hasAnyPatrilineal ? p.isPatrilineal : true;
+
+    // Determine if a person is "external" (Ngoại tộc) for spouse/child notes.
+    const isExternal = (p: TreeNode): boolean =>
+        hasAnyPatrilineal ? !p.isPatrilineal : false;
 
     // ── Step 1: Assign generations from DB (1-based → 0-based) ──
     // DB generation is the source of truth (auto-computed when members are added).
@@ -103,9 +116,9 @@ export function generateBookData(
         genGroups.get(gen)!.push(p);
     }
 
-    // For each patrilineal person, build a BookPerson entry
+    // For each main member, build a BookPerson entry
     for (const p of people) {
-        if (!p.isPatrilineal) continue;
+        if (!isMainMember(p)) continue;
 
         const gen = generations.get(p.handle) ?? 0;
 
@@ -143,7 +156,7 @@ export function generateBookData(
                 if (spouse) {
                     spouseName = spouse.displayName;
                     spouseYears = formatYears(spouse.birthYear, spouse.deathYear, spouse.isLiving);
-                    if (!spouse.isPatrilineal) spouseNote = 'Ngoại tộc';
+                    if (isExternal(spouse)) spouseNote = 'Ngoại tộc';
                 }
             }
 
@@ -155,7 +168,7 @@ export function generateBookData(
                     children.push({
                         name: child.displayName,
                         years: formatYears(child.birthYear, child.deathYear, child.isLiving),
-                        note: !child.isPatrilineal ? 'Ngoại tộc' : undefined,
+                        note: isExternal(child) ? 'Ngoại tộc' : undefined,
                     });
                 }
             }
@@ -229,7 +242,7 @@ export function generateBookData(
         }),
         totalGenerations: maxGen + 1,
         totalMembers: people.length,
-        totalPatrilineal: people.filter(p => p.isPatrilineal).length,
+        totalPatrilineal: people.filter(p => isMainMember(p)).length,
         chapters,
         nameIndex,
     };
