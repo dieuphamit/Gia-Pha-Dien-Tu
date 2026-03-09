@@ -32,9 +32,11 @@ interface Person {
     isPrivacyFiltered: boolean;
     isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
+    clanHandle: string | null;
 }
 
-type ClanFilter = 'pham' | 'than_toc' | 'ngoai_toc' | null;
+const CLAN_LABELS: Record<string, string> = { pham: 'Họ Phạm', ngo: 'Họ Ngô', dinh: 'Họ Đinh' };
+type ClanFilter = 'all' | 'pham' | 'ngo' | 'dinh';
 
 type SortKey = 'displayName' | 'gender' | 'generation' | 'birthDate' | 'deathDate' | 'isLiving';
 
@@ -99,7 +101,7 @@ export default function PeopleListPage() {
     const [search, setSearch] = useState('');
     const [genderFilter, setGenderFilter] = useState<number | null>(null);
     const [livingFilter, setLivingFilter] = useState<boolean | null>(null);
-    const [clanFilter, setClanFilter] = useState<ClanFilter>(null);
+    const [clanFilter, setClanFilter] = useState<ClanFilter>('all');
     const [addDialogOpen, setAddDialogOpen] = useState(false);
 
     // Default sort: ngày sinh tăng dần
@@ -113,7 +115,7 @@ export default function PeopleListPage() {
             const { supabase } = await import('@/lib/supabase');
             const { data, error } = await supabase
                 .from('people')
-                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family');
+                .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, clan_handle');
             if (!error && data) {
                 setPeople(data.map((row: Record<string, unknown>) => ({
                     handle: row.handle as string,
@@ -126,6 +128,7 @@ export default function PeopleListPage() {
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
                     isPatrilineal: (row.is_patrilineal as boolean) ?? false,
                     isAffiliatedFamily: (row.is_affiliated_family as boolean) ?? false,
+                    clanHandle: (row.clan_handle as string | null) ?? null,
                 })));
             }
         } catch { /* ignore */ }
@@ -150,9 +153,7 @@ export default function PeopleListPage() {
             if (search && !p.displayName.toLowerCase().includes(search.toLowerCase())) return false;
             if (genderFilter !== null && p.gender !== genderFilter) return false;
             if (livingFilter !== null && p.isLiving !== livingFilter) return false;
-            if (clanFilter === 'pham' && !p.isPatrilineal) return false;
-            if (clanFilter === 'than_toc' && !p.isAffiliatedFamily) return false;
-            if (clanFilter === 'ngoai_toc' && (p.isPatrilineal || p.isAffiliatedFamily)) return false;
+            if (clanFilter !== 'all' && p.clanHandle !== clanFilter) return false;
             return true;
         });
 
@@ -260,10 +261,12 @@ export default function PeopleListPage() {
                     <Button variant={livingFilter === false ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(false)}>Đã mất</Button>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant={clanFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(null)}>Tất cả</Button>
-                    <Button variant={clanFilter === 'pham' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('pham')}>Dòng họ Phạm</Button>
-                    <Button variant={clanFilter === 'than_toc' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('than_toc')}>Thân tộc</Button>
-                    <Button variant={clanFilter === 'ngoai_toc' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('ngoai_toc')}>Ngoại tộc</Button>
+                    <Button variant={clanFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('all')}>Tất cả họ</Button>
+                    {(['pham', 'ngo', 'dinh'] as const).map(c => (
+                        <Button key={c} variant={clanFilter === c ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c)}>
+                            {CLAN_LABELS[c]}
+                        </Button>
+                    ))}
                 </div>
 
                 {/* Sort indicator badge */}
