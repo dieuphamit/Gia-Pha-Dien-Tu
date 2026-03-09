@@ -310,6 +310,7 @@ type PersonUpdateFields = {
     biography?: string | null;
     isAffiliatedFamily?: boolean;
     isPatrilineal?: boolean;
+    clanHandle?: string | null;
 };
 
 /** Chuyển camelCase fields → snake_case DB columns. Exported for testing. */
@@ -350,6 +351,7 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.biography !== undefined) dbFields.biography = fields.biography;
     if (fields.isAffiliatedFamily !== undefined) dbFields.is_affiliated_family = fields.isAffiliatedFamily;
     if (fields.isPatrilineal !== undefined) dbFields.is_patrilineal = fields.isPatrilineal;
+    if (fields.clanHandle !== undefined) dbFields.clan_handle = fields.clanHandle;
     return dbFields;
 }
 

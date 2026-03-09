@@ -322,13 +322,14 @@ export default function TreeViewPage() {
             // Load from Supabase, filtered by selected clan
             try {
                 const data = await fetchTreeData(selectedClan ?? undefined);
-                if (data.people.length > 0) {
+                // If a clan is explicitly selected, show result even if empty (don't fall back to mock)
+                if (data.people.length > 0 || selectedClan) {
                     setTreeData(data);
                     setLoading(false);
                     return;
                 }
             } catch { /* fallback to mock */ }
-            // Fallback: use bundled mock data (demo mode)
+            // Fallback: bundled mock data — only when no clan system is set up
             setTreeData(getMockTreeData());
             setLoading(false);
         };

@@ -25,6 +25,7 @@ import {
     removePersonFromParentFamily,
     addPersonAsSpouse,
     removePersonFromSpouseFamily,
+    fetchClans,
 } from '@/lib/supabase-data';
 
 interface FamilyOption {
@@ -44,6 +45,7 @@ interface EditForm {
     isLiving: boolean;
     isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
+    clanHandle: string;
     phone: string;
     email: string;
     zalo: string;
@@ -101,11 +103,14 @@ export default function PersonProfilePage() {
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
         birthDate: '', deathDate: '', isLiving: true, isPatrilineal: false, isAffiliatedFamily: false,
+        clanHandle: 'pham',
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
         occupation: '', company: '', education: '',
         biography: '', notes: '',
     });
+    const [availableClans, setAvailableClans] = useState<Array<{ handle: string; displayName: string }>>([]);
+    const [personClanHandle, setPersonClanHandle] = useState<string>('pham');
 
     const fetchPerson = async () => {
         try {
@@ -117,6 +122,7 @@ export default function PersonProfilePage() {
                 .single();
             if (!error && data) {
                 const row = data as Record<string, unknown>;
+                setPersonClanHandle((row.clan_handle as string) || 'pham');
                 setPerson({
                     handle: row.handle as string,
                     displayName: row.display_name as string,
@@ -199,6 +205,7 @@ export default function PersonProfilePage() {
         fetchPerson();
         loadFamilyInfo();
         fetchMedia();
+        fetchClans().then(setAvailableClans);
     }, [handle, fetchMedia]);
 
     const startEdit = () => {
@@ -215,6 +222,7 @@ export default function PersonProfilePage() {
             isLiving: person.isLiving,
             isPatrilineal: person.isPatrilineal ?? false,
             isAffiliatedFamily: person.isAffiliatedFamily ?? false,
+            clanHandle: personClanHandle,
             phone: person.phone || '',
             email: person.email || '',
             zalo: person.zalo || '',
@@ -301,6 +309,7 @@ export default function PersonProfilePage() {
             isLiving: form.isLiving,
             isPatrilineal: form.isPatrilineal,
             isAffiliatedFamily: form.isAffiliatedFamily,
+            clanHandle: form.clanHandle || null,
             phone: form.phone || null,
             email: form.email || null,
             zalo: form.zalo || null,
@@ -799,6 +808,20 @@ export default function PersonProfilePage() {
                                     <span className="text-teal-600 font-medium">Thân Tộc</span> — có thông tin cha mẹ trong hệ thống.{' '}
                                     <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào, không rõ gốc.
                                 </p>
+                                {isAdmin && availableClans.length > 1 && (
+                                    <div className="mt-3 space-y-1">
+                                        <label className="text-sm font-medium">Dòng họ</label>
+                                        <select
+                                            className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                                            value={form.clanHandle}
+                                            onChange={e => setForm(p => ({ ...p, clanHandle: e.target.value }))}
+                                        >
+                                            {availableClans.map(c => (
+                                                <option key={c.handle} value={c.handle}>{c.displayName}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

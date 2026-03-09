@@ -17,6 +17,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/components/auth-provider';
 import {
     addPerson,
     addPersonAsChild,
@@ -26,6 +27,7 @@ import {
     generateFamilyHandle,
     fetchFamiliesForSelect,
     fetchPeopleForSelect,
+    fetchClans,
 } from '@/lib/supabase-data';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ interface FormData {
     zalo: string;
     facebook: string;
     isPatrilineal: boolean;
+    clanHandle: string;
 }
 
 const INITIAL_FORM: FormData = {
@@ -78,6 +81,7 @@ const INITIAL_FORM: FormData = {
     zalo: '',
     facebook: '',
     isPatrilineal: false,
+    clanHandle: 'pham',
 };
 
 // ── Sub components ─────────────────────────────────────────────
@@ -121,6 +125,8 @@ function StepInfo({
     avatarPreview,
     onPhotoChange,
     generationAutoComputed,
+    isAdmin,
+    availableClans,
 }: {
     form: FormData;
     onChange: (f: Partial<FormData>) => void;
@@ -129,6 +135,8 @@ function StepInfo({
     avatarPreview: string | null;
     onPhotoChange: (file: File | null) => void;
     generationAutoComputed: boolean;
+    isAdmin: boolean;
+    availableClans: Array<{ handle: string; displayName: string }>;
 }) {
     const photoInputRef = useRef<HTMLInputElement>(null);
     const isValid = form.displayName.trim().length >= 2;
@@ -287,6 +295,22 @@ function StepInfo({
                     />
                 </div>
             </div>
+
+            {/* Dòng họ — chỉ admin mới thấy và chỉnh sửa */}
+            {isAdmin && availableClans.length > 1 && (
+                <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Dòng họ</label>
+                    <select
+                        className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                        value={form.clanHandle}
+                        onChange={e => onChange({ clanHandle: e.target.value })}
+                    >
+                        {availableClans.map(c => (
+                            <option key={c.handle} value={c.handle}>{c.displayName}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {/* Ảnh đại diện */}
             <div className="space-y-1.5">
@@ -756,6 +780,7 @@ interface AddMemberDialogProps {
 }
 
 export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDialogProps) {
+    const { isAdmin } = useAuth();
     const [step, setStep] = useState<Step>('info');
     const [form, setForm] = useState<FormData>(INITIAL_FORM);
     const [createdHandle, setCreatedHandle] = useState('');
@@ -768,15 +793,17 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [generationAutoComputed, setGenerationAutoComputed] = useState(false);
+    const [availableClans, setAvailableClans] = useState<Array<{ handle: string; displayName: string }>>([]);
 
-    // Load families + people for dropdowns when dialog opens
+    // Load families + people + clans for dropdowns when dialog opens
     useEffect(() => {
         if (!open) return;
         setLoadingOptions(true);
-        Promise.all([fetchFamiliesForSelect(), fetchPeopleForSelect()])
-            .then(([fams, persons]) => {
+        Promise.all([fetchFamiliesForSelect(), fetchPeopleForSelect(), fetchClans()])
+            .then(([fams, persons, clans]) => {
                 setFamilies(fams);
                 setPeople(persons);
+                setAvailableClans(clans);
             })
             .finally(() => setLoadingOptions(false));
     }, [open]);
@@ -857,6 +884,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             parentFamilies: [],
             zalo: form.zalo || null,
             facebook: form.facebook || null,
+            clanHandle: form.clanHandle || 'pham',
         });
 
         // Upload ảnh sau khi tạo người (editor/admin → auto-published)
@@ -934,6 +962,8 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                         avatarPreview={avatarPreview}
                         onPhotoChange={handlePhotoChange}
                         generationAutoComputed={generationAutoComputed}
+                        isAdmin={isAdmin}
+                        availableClans={availableClans}
                     />
                 )}
 
