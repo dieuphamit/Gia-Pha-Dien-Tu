@@ -35,6 +35,7 @@ import { AddMemberDialog } from '@/components/add-member-dialog';
 import { insertAuditLog } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
+type ClanFilter = 'all' | 'pham' | 'ngo' | 'dinh';
 
 const CLAN_LABELS: Record<string, string> = {
     pham: 'Họ Phạm',
@@ -96,6 +97,7 @@ export default function AdminUsersPage() {
     const [loading, setLoading] = useState(true);
     const [inviteTableExists, setInviteTableExists] = useState(true);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [clanFilter, setClanFilter] = useState<ClanFilter>('all');
 
     const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
     const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -278,8 +280,12 @@ export default function AdminUsersPage() {
     const pendingCount = users.filter(u => u.status === 'pending').length;
 
     const filteredUsers = users.filter(u => {
-        if (statusFilter === 'all') return true;
-        return u.status === statusFilter;
+        if (statusFilter !== 'all' && u.status !== statusFilter) return false;
+        if (clanFilter !== 'all') {
+            if (u.role === 'admin') return true;
+            if (!(u.clan_access ?? []).includes(clanFilter)) return false;
+        }
+        return true;
     });
 
     if (authLoading) {
@@ -400,6 +406,7 @@ export default function AdminUsersPage() {
                             <CardTitle>Danh sách thành viên</CardTitle>
                             <CardDescription>{filteredUsers.length} / {users.length} thành viên</CardDescription>
                         </div>
+                        <div className="flex flex-col gap-2 items-end">
                         {/* Status filter tabs */}
                         <div className="flex gap-1 rounded-lg border p-1 bg-muted/50">
                             {([
@@ -419,6 +426,27 @@ export default function AdminUsersPage() {
                                     {tab.label}
                                 </button>
                             ))}
+                        </div>
+                        {/* Clan filter tabs */}
+                        <div className="flex gap-1 rounded-lg border p-1 bg-muted/50">
+                            {([
+                                { key: 'all', label: 'Tất cả họ' },
+                                { key: 'pham', label: 'Họ Phạm' },
+                                { key: 'ngo', label: 'Họ Ngô' },
+                                { key: 'dinh', label: 'Họ Đinh' },
+                            ] as { key: ClanFilter; label: string }[]).map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setClanFilter(tab.key)}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${clanFilter === tab.key
+                                        ? 'bg-background shadow-sm text-foreground'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                         </div>
                     </div>
                 </CardHeader>
