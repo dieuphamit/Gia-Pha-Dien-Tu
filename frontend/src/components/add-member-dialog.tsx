@@ -29,6 +29,7 @@ import {
     fetchPeopleForSelect,
     fetchClans,
 } from '@/lib/supabase-data';
+import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ interface FormData {
     zalo: string;
     facebook: string;
     isPatrilineal: boolean;
-    clanHandle: string;
+    clanHandles: string[];
 }
 
 const INITIAL_FORM: FormData = {
@@ -81,7 +82,7 @@ const INITIAL_FORM: FormData = {
     zalo: '',
     facebook: '',
     isPatrilineal: false,
-    clanHandle: 'pham',
+    clanHandles: ['pham'],
 };
 
 // ── Sub components ─────────────────────────────────────────────
@@ -297,19 +298,12 @@ function StepInfo({
             </div>
 
             {/* Dòng họ — chỉ admin mới thấy và chỉnh sửa */}
-            {isAdmin && availableClans.length > 1 && (
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Dòng họ</label>
-                    <select
-                        className="w-full rounded-md border px-3 py-2 text-sm bg-background"
-                        value={form.clanHandle}
-                        onChange={e => onChange({ clanHandle: e.target.value })}
-                    >
-                        {availableClans.map(c => (
-                            <option key={c.handle} value={c.handle}>{c.displayName}</option>
-                        ))}
-                    </select>
-                </div>
+            {isAdmin && availableClans.length > 0 && (
+                <ClanCheckboxGroup
+                    clans={availableClans}
+                    selected={form.clanHandles}
+                    onChange={val => onChange({ clanHandles: val })}
+                />
             )}
 
             {/* Ảnh đại diện */}
@@ -884,7 +878,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
             parentFamilies: [],
             zalo: form.zalo || null,
             facebook: form.facebook || null,
-            clanHandle: form.clanHandle || 'pham',
+            clanHandles: form.clanHandles.length > 0 ? form.clanHandles : ['pham'],
         });
 
         // Upload ảnh sau khi tạo người (editor/admin → auto-published)

@@ -73,6 +73,7 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         parentFamilies: (row.parent_families as string[]) || [],
         avatarUrl: (row.avatar_url as string | null) ?? undefined,
         clanHandle: (row.clan_handle as string | null) ?? undefined,
+        clanHandles: (row.clan_handles as string[] | null) ?? [],
     };
 }
 
@@ -91,12 +92,12 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
     let query = supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url, clan_handle')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, families, parent_families, avatar_url, clan_handle, clan_handles')
         .order('generation')
         .order('handle');
 
     if (clanHandle) {
-        query = query.eq('clan_handle', clanHandle);
+        query = query.contains('clan_handles', [clanHandle]);
     }
 
     const { data, error } = await query;
@@ -311,6 +312,7 @@ type PersonUpdateFields = {
     isAffiliatedFamily?: boolean;
     isPatrilineal?: boolean;
     clanHandle?: string | null;
+    clanHandles?: string[];
 };
 
 /** Chuyển camelCase fields → snake_case DB columns. Exported for testing. */
@@ -352,6 +354,13 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.isAffiliatedFamily !== undefined) dbFields.is_affiliated_family = fields.isAffiliatedFamily;
     if (fields.isPatrilineal !== undefined) dbFields.is_patrilineal = fields.isPatrilineal;
     if (fields.clanHandle !== undefined) dbFields.clan_handle = fields.clanHandle;
+    if (fields.clanHandles !== undefined) {
+        dbFields.clan_handles = fields.clanHandles;
+        // Keep clan_handle in sync with first element (primary clan)
+        if (fields.clanHandle === undefined) {
+            dbFields.clan_handle = fields.clanHandles[0] ?? null;
+        }
+    }
     return dbFields;
 }
 
@@ -411,6 +420,7 @@ export async function addPerson(person: {
     zalo?: string | null;
     facebook?: string | null;
     clanHandle?: string | null;
+    clanHandles?: string[];
 }, actorId?: string): Promise<{ error: string | null }> {
     const birthYear = person.birthDate ? new Date(person.birthDate).getFullYear() : null;
     const deathYear = person.deathDate ? new Date(person.deathDate).getFullYear() : null;
@@ -432,7 +442,8 @@ export async function addPerson(person: {
             parent_families: person.parentFamilies || [],
             zalo: person.zalo || null,
             facebook: person.facebook || null,
-            clan_handle: person.clanHandle || null,
+            clan_handle: person.clanHandle || (person.clanHandles?.[0] ?? null),
+            clan_handles: person.clanHandles ?? (person.clanHandle ? [person.clanHandle] : []),
         });
 
     if (error) {
