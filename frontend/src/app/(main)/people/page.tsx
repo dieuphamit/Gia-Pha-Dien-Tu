@@ -94,7 +94,7 @@ function SortableHead({
 
 export default function PeopleListPage() {
     const router = useRouter();
-    const { canEdit, isMember } = useAuth();
+    const { canEdit, isMember, isAdmin } = useAuth();
 
     const [people, setPeople] = useState<Person[]>([]);
     const [loading, setLoading] = useState(true);
@@ -260,14 +260,16 @@ export default function PeopleListPage() {
                     <Button variant={livingFilter === true ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(true)}>Còn sống</Button>
                     <Button variant={livingFilter === false ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(false)}>Đã mất</Button>
                 </div>
-                <div className="flex gap-2">
-                    <Button variant={clanFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('all')}>Tất cả họ</Button>
-                    {(['pham', 'ngo', 'dinh'] as const).map(c => (
-                        <Button key={c} variant={clanFilter === c ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c)}>
-                            {CLAN_LABELS[c]}
-                        </Button>
-                    ))}
-                </div>
+                {isAdmin && (
+                    <div className="flex gap-2">
+                        <Button variant={clanFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('all')}>Tất cả họ</Button>
+                        {(['pham', 'ngo', 'dinh'] as const).map(c => (
+                            <Button key={c} variant={clanFilter === c ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c)}>
+                                {CLAN_LABELS[c]}
+                            </Button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Sort indicator badge */}
                 <div className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
