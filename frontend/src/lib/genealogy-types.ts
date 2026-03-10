@@ -22,6 +22,8 @@ export interface PersonDetail {
     isPrivacyFiltered: boolean;
     tocType: 'chinh' | 'than' | 'ngoai';
     tocOverride: boolean;
+    /** Per-clan manual toc_type map, e.g. { pham: 'chinh', ngo: 'ngoai' }. Empty = auto-computed. */
+    clanTocMap: Record<string, 'chinh' | 'than' | 'ngoai'>;
     /** @deprecated dùng tocType === 'chinh' thay thế */
     isPatrilineal: boolean;
     /** @deprecated dùng tocType === 'than' thay thế */

@@ -46,6 +46,8 @@ interface EditForm {
     isLiving: boolean;
     tocType: 'chinh' | 'than' | 'ngoai';
     tocOverride: boolean;
+    /** Per-clan toc_type: { pham: 'chinh', ngo: 'ngoai' } */
+    clanTocMap: Record<string, 'chinh' | 'than' | 'ngoai'>;
     isPatrilineal: boolean;
     isAffiliatedFamily: boolean;
     clanHandles: string[];
@@ -105,7 +107,7 @@ export default function PersonProfilePage() {
 
     const [form, setForm] = useState<EditForm>({
         displayName: '', gender: 1, generation: 1, surname: '', firstName: '', nickName: '',
-        birthDate: '', deathDate: '', isLiving: true, tocType: 'ngoai', tocOverride: false, isPatrilineal: false, isAffiliatedFamily: false,
+        birthDate: '', deathDate: '', isLiving: true, tocType: 'ngoai', tocOverride: false, clanTocMap: {}, isPatrilineal: false, isAffiliatedFamily: false,
         clanHandles: ['pham'],
         phone: '', email: '', zalo: '', facebook: '',
         hometown: '', currentAddress: '',
@@ -140,6 +142,7 @@ export default function PersonProfilePage() {
                     isPrivacyFiltered: row.is_privacy_filtered as boolean,
                     tocType: (row.toc_type as 'chinh' | 'than' | 'ngoai') ?? 'ngoai',
                     tocOverride: (row.toc_override as boolean) ?? false,
+                    clanTocMap: (row.clan_toc_map as Record<string, 'chinh' | 'than' | 'ngoai'>) ?? {},
                     isPatrilineal: (row.toc_type === 'chinh') || (row.toc_type == null && row.is_patrilineal === true),
                     isAffiliatedFamily: (row.toc_type === 'than') || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
                     families: (row.families as string[]) || [],
@@ -228,6 +231,15 @@ export default function PersonProfilePage() {
             isLiving: person.isLiving,
             tocType: person.tocType ?? 'ngoai',
             tocOverride: person.tocOverride ?? false,
+            clanTocMap: (() => {
+                const existing = person.clanTocMap ?? {};
+                // Nếu chưa có per-clan data nhưng đã override thủ công → pre-fill từ tocType
+                if (Object.keys(existing).length === 0 && person.tocOverride && person.tocType) {
+                    const primaryClan = personClanHandle[0];
+                    return primaryClan ? { [primaryClan]: person.tocType } : {};
+                }
+                return existing;
+            })(),
             isPatrilineal: person.isPatrilineal ?? false,
             isAffiliatedFamily: person.isAffiliatedFamily ?? false,
             clanHandles: personClanHandle,
@@ -315,10 +327,21 @@ export default function PersonProfilePage() {
             birthDate: form.birthDate || null,
             deathDate: form.deathDate || null,
             isLiving: form.isLiving,
-            tocType: form.tocType,
-            tocOverride: form.tocOverride,
-            isPatrilineal: form.isPatrilineal,
-            isAffiliatedFamily: form.isAffiliatedFamily,
+            clanTocMap: form.clanTocMap,
+            // Derive global tocType from primary clan's entry, fallback to form.tocType
+            tocType: (() => {
+                const primaryClan = (form.clanHandles.length > 0 ? form.clanHandles : ['pham'])[0];
+                return form.clanTocMap[primaryClan] ?? form.tocType;
+            })(),
+            tocOverride: Object.keys(form.clanTocMap).length > 0,
+            isPatrilineal: (() => {
+                const primaryClan = (form.clanHandles.length > 0 ? form.clanHandles : ['pham'])[0];
+                return (form.clanTocMap[primaryClan] ?? form.tocType) === 'chinh';
+            })(),
+            isAffiliatedFamily: (() => {
+                const primaryClan = (form.clanHandles.length > 0 ? form.clanHandles : ['pham'])[0];
+                return (form.clanTocMap[primaryClan] ?? form.tocType) === 'than';
+            })(),
             clanHandles: form.clanHandles.length > 0 ? form.clanHandles : ['pham'],
             phone: form.phone || null,
             email: form.email || null,
@@ -776,69 +799,11 @@ export default function PersonProfilePage() {
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                {(() => {
-                                    const personClanNames = availableClans
-                                        .filter(c => form.clanHandles.includes(c.handle))
-                                        .map(c => c.displayName);
-                                    const chinhDesc = personClanNames.length > 0
-                                        ? personClanNames.join(', ')
-                                        : 'Cùng họ với dòng tộc chính';
-                                    return (
-                                        <>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <label className="text-sm font-medium leading-none">Phân loại trong họ tộc</label>
-                                                {form.tocOverride && (
-                                                    <>
-                                                        <Badge variant="outline" className="text-orange-600 border-orange-400 text-xs px-1.5 py-0">
-                                                            Đã ghi đè thủ công
-                                                        </Badge>
-                                                        <button
-                                                            type="button"
-                                                            className="text-xs text-muted-foreground hover:text-foreground underline"
-                                                            onClick={() => setForm(p => ({ ...p, tocOverride: false }))}
-                                                        >
-                                                            ↺ Tự động tính lại
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-2 mt-2">
-                                                {[
-                                                    { value: 'chinh', label: 'Chính Tộc', activeClass: 'bg-rose-600 hover:bg-rose-700 border-rose-600 text-white' },
-                                                    { value: 'than',  label: 'Thân Tộc',  activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
-                                                    { value: 'ngoai', label: 'Ngoại Tộc', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
-                                                ].map(opt => {
-                                                    const isSelected = form.tocType === opt.value;
-                                                    return (
-                                                        <Button
-                                                            key={opt.value}
-                                                            type="button"
-                                                            size="sm"
-                                                            variant={isSelected ? 'default' : 'outline'}
-                                                            className={isSelected ? opt.activeClass : ''}
-                                                            onClick={() => setForm(p => ({
-                                                                ...p,
-                                                                tocType: opt.value as 'chinh' | 'than' | 'ngoai',
-                                                                tocOverride: true,
-                                                                isPatrilineal: opt.value === 'chinh',
-                                                                isAffiliatedFamily: opt.value === 'than',
-                                                            }))}
-                                                        >
-                                                            {opt.label}
-                                                        </Button>
-                                                    );
-                                                })}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                <span className="text-rose-600 font-medium">Chính Tộc</span> — {chinhDesc}.{' '}
-                                                <span className="text-teal-600 font-medium">Thân Tộc</span> — có thông tin cha mẹ trong hệ thống.{' '}
-                                                <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào, không rõ gốc.
-                                            </p>
-                                        </>
-                                    );
-                                })()}
+                                <label className="text-sm font-medium leading-none">Phân loại trong họ tộc</label>
+
+                                {/* Bước 1: Chọn dòng họ (chỉ admin thấy) */}
                                 {isAdmin && availableClans.length > 0 && (
-                                    <div className="mt-3">
+                                    <div className="mt-2">
                                         <ClanCheckboxGroup
                                             clans={availableClans}
                                             selected={form.clanHandles}
@@ -846,6 +811,70 @@ export default function PersonProfilePage() {
                                         />
                                     </div>
                                 )}
+
+                                {/* Bước 2: Chọn loại tộc cho từng dòng họ */}
+                                {(() => {
+                                    const TOC_OPTS = [
+                                        { value: 'chinh' as const, label: 'Chính Tộc', activeClass: 'bg-rose-600 hover:bg-rose-700 border-rose-600 text-white' },
+                                        { value: 'than'  as const, label: 'Thân Tộc',  activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
+                                        { value: 'ngoai' as const, label: 'Ngoại Tộc', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
+                                    ];
+                                    const clansToShow = availableClans.filter(c => form.clanHandles.includes(c.handle));
+                                    if (clansToShow.length === 0) return null;
+                                    return (
+                                        <div className="mt-2 space-y-2">
+                                            {clansToShow.map(clan => {
+                                                const current = form.clanTocMap[clan.handle];
+                                                return (
+                                                    <div key={clan.handle} className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-sm font-medium w-24 shrink-0">{clan.displayName}</span>
+                                                        <div className="flex gap-1">
+                                                            {TOC_OPTS.map(opt => (
+                                                                <Button
+                                                                    key={opt.value}
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant={current === opt.value ? 'default' : 'outline'}
+                                                                    className={`text-xs px-2 py-1 h-7 ${current === opt.value ? opt.activeClass : ''}`}
+                                                                    onClick={() => setForm(p => ({
+                                                                        ...p,
+                                                                        clanTocMap: { ...p.clanTocMap, [clan.handle]: opt.value },
+                                                                    }))}
+                                                                >
+                                                                    {opt.label}
+                                                                </Button>
+                                                            ))}
+                                                            {current && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="text-xs text-muted-foreground hover:text-foreground ml-1"
+                                                                    title="Bỏ chọn (để hệ thống tự tính)"
+                                                                    onClick={() => setForm(p => {
+                                                                        const next = { ...p.clanTocMap };
+                                                                        delete next[clan.handle];
+                                                                        return { ...p, clanTocMap: next };
+                                                                    })}
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {!current && (
+                                                            <span className="text-xs text-muted-foreground">(tự động)</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()}
+
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    <span className="text-rose-600 font-medium">Chính Tộc</span> — cùng họ với dòng tộc.{' '}
+                                    <span className="text-teal-600 font-medium">Thân Tộc</span> — có cha mẹ trong hệ thống.{' '}
+                                    <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào.
+                                    {' '}Để trống = hệ thống tự tính.
+                                </p>
                             </div>
                         </CardContent>
                     </Card>

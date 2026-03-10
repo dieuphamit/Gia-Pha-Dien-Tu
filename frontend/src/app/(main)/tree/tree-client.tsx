@@ -963,6 +963,7 @@ export default function TreeViewPage() {
                                     zoomLevel={zoomLevel}
                                     showCollapseToggle={hasChildren(item.node.handle)}
                                     isCollapsed={collapsedBranches.has(item.node.handle)}
+                                    clanHandle={selectedClan}
                                     onHover={handleCardHover}
                                     onClick={handleCardClick}
                                     onSetFocus={handleCardFocus}
@@ -1214,10 +1215,11 @@ const MemoPersonCard = memo(PersonCard, (prev, next) =>
     prev.isSelected === next.isSelected &&
     prev.zoomLevel === next.zoomLevel &&
     prev.showCollapseToggle === next.showCollapseToggle &&
-    prev.isCollapsed === next.isCollapsed
+    prev.isCollapsed === next.isCollapsed &&
+    prev.clanHandle === next.clanHandle
 );
 
-function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoomLevel, showCollapseToggle, isCollapsed, onHover, onClick, onSetFocus, onToggleCollapse }: {
+function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoomLevel, showCollapseToggle, isCollapsed, clanHandle, onHover, onClick, onSetFocus, onToggleCollapse }: {
     item: PositionedNode;
     isHighlighted: boolean;
     isFocused: boolean;
@@ -1226,6 +1228,7 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
     zoomLevel: ZoomLevel;
     showCollapseToggle: boolean;
     isCollapsed: boolean;
+    clanHandle?: string | null;
     onHover: (h: string | null) => void;
     onClick: (handle: string, x: number, y: number) => void;
     onSetFocus: (handle: string) => void;
@@ -1235,8 +1238,10 @@ function PersonCard({ item, isHighlighted, isFocused, isHovered, isSelected, zoo
     const isMale = node.gender === 1;
     const isFemale = node.gender === 2;
     const isDead = !node.isLiving;
-    const isPatri = node.tocType === 'chinh';
-    const isAffiliated = node.tocType === 'than';
+    // Dùng toc_type theo clan hiện tại nếu có, fallback về global tocType
+    const effectiveTocType = (clanHandle && node.clanTocMap?.[clanHandle]) ?? node.tocType;
+    const isPatri = effectiveTocType === 'chinh';
+    const isAffiliated = effectiveTocType === 'than';
 
     // ── Color system (3 tầng: patrilineal / affiliated / ngoại tộc) ──
     const dotColor = isPatri

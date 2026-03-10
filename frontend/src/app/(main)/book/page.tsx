@@ -90,7 +90,8 @@ function BookPageContent() {
                 : all.filter((c) => (accessibleClans ?? []).includes(c.handle));
             setAvailableClans(accessible);
             if (!clanHandle && accessible.length > 0) {
-                router.replace(`/book?clan=${accessible[0].handle}`);
+                const defaultClan = accessible.find(c => c.handle === 'pham') ?? accessible[0];
+                router.replace(`/book?clan=${defaultClan.handle}`);
             }
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps

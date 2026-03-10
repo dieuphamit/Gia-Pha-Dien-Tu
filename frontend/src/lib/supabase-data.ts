@@ -69,6 +69,7 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         isPrivacyFiltered: row.is_privacy_filtered as boolean,
         tocType: (row.toc_type as 'chinh' | 'than' | 'ngoai') ?? 'ngoai',
         tocOverride: (row.toc_override as boolean) ?? false,
+        clanTocMap: (row.clan_toc_map as Record<string, 'chinh' | 'than' | 'ngoai'>) ?? {},
         // backward-compat: derived from tocType
         isPatrilineal: (row.toc_type ?? row.is_patrilineal) === 'chinh' || (row.toc_type == null && row.is_patrilineal === true),
         isAffiliatedFamily: (row.toc_type ?? '') === 'than' || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
@@ -95,7 +96,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
 export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
     let query = supabase
         .from('people')
-        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, toc_type, toc_override, families, parent_families, avatar_url, clan_handle, clan_handles')
+        .select('handle, display_name, gender, birth_year, birth_date, death_year, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, toc_type, toc_override, clan_toc_map, families, parent_families, avatar_url, clan_handle, clan_handles')
         .order('generation')
         .order('handle');
 
@@ -346,6 +347,7 @@ type PersonUpdateFields = {
     isPatrilineal?: boolean;
     tocType?: 'chinh' | 'than' | 'ngoai';
     tocOverride?: boolean;
+    clanTocMap?: Record<string, 'chinh' | 'than' | 'ngoai'>;
     clanHandle?: string | null;
     clanHandles?: string[];
 };
@@ -390,6 +392,7 @@ export function buildPersonDbFields(fields: PersonUpdateFields): Record<string, 
     if (fields.isPatrilineal !== undefined) dbFields.is_patrilineal = fields.isPatrilineal;
     if (fields.tocType !== undefined) dbFields.toc_type = fields.tocType;
     if (fields.tocOverride !== undefined) dbFields.toc_override = fields.tocOverride;
+    if (fields.clanTocMap !== undefined) dbFields.clan_toc_map = fields.clanTocMap;
     if (fields.clanHandle !== undefined) dbFields.clan_handle = fields.clanHandle;
     if (fields.clanHandles !== undefined) {
         dbFields.clan_handles = fields.clanHandles;
