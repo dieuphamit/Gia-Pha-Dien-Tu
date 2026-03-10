@@ -126,6 +126,7 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
                     message: `${title.trim()} — ${new Date(startAt).toLocaleDateString('vi-VN')}`,
                     linkUrl: `/events/${newEvent.id}`,
                     actorId: user.id,
+                    clanHandles,
                 });
                 setOpen(false);
                 setTitle(''); setDescription(''); setStartAt(''); setLocation('');

@@ -1011,18 +1011,28 @@ export async function insertNotificationsForAllUsers(params: {
     message: string;
     linkUrl: string;
     actorId: string;
+    /** Only notify users whose clan_access overlaps this list. NULL = notify all (admin content). */
+    clanHandles?: string[];
 }): Promise<void> {
     try {
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id')
+            .select('id, clan_access')
             .eq('status', 'active');
 
         if (!profiles || profiles.length === 0) return;
 
-        const recipients = (profiles as { id: string }[])
-            .map(p => p.id)
-            .filter(id => id !== params.actorId);
+        const recipients = (profiles as { id: string; clan_access: string[] | null }[])
+            .filter(p => {
+                if (p.id === params.actorId) return false;
+                // If no clanHandles filter → notify everyone (backward compat)
+                if (!params.clanHandles || params.clanHandles.length === 0) return true;
+                // Admin (clan_access === null) always receives notifications
+                if (p.clan_access === null) return true;
+                // User must have at least one clan in common with the content
+                return p.clan_access.some(c => params.clanHandles!.includes(c));
+            })
+            .map(p => p.id);
 
         if (recipients.length === 0) return;
 

@@ -114,6 +114,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
                         : body.trim().slice(0, 100),
                     linkUrl: `/feed?post=${newPost.id}`,
                     actorId: user.id,
+                    clanHandles,
                 });
                 setBody('');
                 setTitle('');
