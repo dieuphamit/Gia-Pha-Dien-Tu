@@ -95,7 +95,7 @@ function SortableHead({
 
 export default function PeopleListPage() {
     const router = useRouter();
-    const { canEdit, isMember, isAdmin } = useAuth();
+    const { canEdit, isMember, isAdmin, accessibleClans } = useAuth();
 
     const [people, setPeople] = useState<Person[]>([]);
     const [loading, setLoading] = useState(true);
@@ -114,9 +114,16 @@ export default function PeopleListPage() {
         setLoading(true);
         try {
             const { supabase } = await import('@/lib/supabase');
-            const { data, error } = await supabase
+            let query = supabase
                 .from('people')
                 .select('handle, display_name, gender, generation, birth_date, death_date, is_living, is_privacy_filtered, is_patrilineal, is_affiliated_family, clan_handle, clan_handles');
+
+            // Non-admin: only fetch people of accessible clans
+            if (accessibleClans !== null) {
+                query = query.overlaps('clan_handles', accessibleClans);
+            }
+
+            const { data, error } = await query;
             if (!error && data) {
                 setPeople(data.map((row: Record<string, unknown>) => ({
                     handle: row.handle as string,
@@ -135,7 +142,7 @@ export default function PeopleListPage() {
             }
         } catch { /* ignore */ }
         setLoading(false);
-    }, []);
+    }, [accessibleClans]);
 
     useEffect(() => { fetchPeople(); }, [fetchPeople]);
 

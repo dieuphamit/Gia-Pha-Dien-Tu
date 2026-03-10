@@ -29,7 +29,9 @@ import {
     insertNotificationsForAllUsers,
     fetchUnreadContentIds,
     markEventNotificationRead,
+    fetchClans,
 } from '@/lib/supabase-data';
+import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
 
 interface EventItem {
     id: string;
@@ -68,7 +70,7 @@ function formatTime(dateStr: string) {
 // === Create Event Dialog ===
 
 function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
-    const { user } = useAuth();
+    const { user, accessibleClans } = useAuth();
     const [open, setOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -78,11 +80,30 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
     const [location, setLocation] = useState('');
     const [type, setType] = useState('MEETING');
 
+    // Clan selector
+    const showClanPicker = accessibleClans === null || (accessibleClans?.length ?? 0) > 1;
+    const [availableClans, setAvailableClans] = useState<{ handle: string; displayName: string }[]>([]);
+    const [selectedClanHandles, setSelectedClanHandles] = useState<string[]>(accessibleClans ?? ['pham']);
+
+    useEffect(() => {
+        if (!showClanPicker) {
+            setSelectedClanHandles(accessibleClans ?? ['pham']);
+            return;
+        }
+        fetchClans().then(clans => {
+            const filtered = accessibleClans === null ? clans : clans.filter(c => accessibleClans.includes(c.handle));
+            setAvailableClans(filtered);
+            setSelectedClanHandles(filtered.map(c => c.handle));
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showClanPicker]);
+
     const handleSubmit = async () => {
         if (!title.trim() || !startAt || !user) return;
         setSubmitting(true);
         setError(null);
         try {
+            const clanHandles = showClanPicker ? selectedClanHandles : (accessibleClans ?? ['pham']);
             const { data: newEvent, error: insertError } = await supabase
                 .from('events')
                 .insert({
@@ -92,6 +113,7 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
                     location: location.trim() || null,
                     type,
                     creator_id: user.id,
+                    clan_handles: clanHandles,
                 })
                 .select('id')
                 .single();
@@ -137,6 +159,14 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
                             <option key={k} value={k}>{v.emoji} {v.label}</option>
                         ))}
                     </select>
+                    {showClanPicker && availableClans.length > 0 && (
+                        <ClanCheckboxGroup
+                            clans={availableClans}
+                            selected={selectedClanHandles}
+                            onChange={setSelectedClanHandles}
+                            label="Dành cho dòng họ"
+                        />
+                    )}
                     {error && (
                         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
                             <AlertCircle className="h-4 w-4 shrink-0" />
@@ -146,7 +176,7 @@ function CreateEventDialog({ onCreated }: { onCreated: () => void }) {
                     <Button
                         className="w-full"
                         onClick={handleSubmit}
-                        disabled={!title.trim() || !startAt || submitting}
+                        disabled={!title.trim() || !startAt || submitting || (showClanPicker && selectedClanHandles.length === 0)}
                     >
                         {submitting ? 'Đang tạo...' : 'Tạo sự kiện'}
                     </Button>
@@ -222,7 +252,7 @@ function EventCard({
 // === Main Page ===
 
 export default function EventsPage() {
-    const { canEdit, isMember, user } = useAuth();
+    const { canEdit, isMember, user, accessibleClans } = useAuth();
     const [events, setEvents] = useState<EventItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -246,10 +276,16 @@ export default function EventsPage() {
         setFetchError(null);
         try {
             // Step 1: Fetch events WITHOUT join
-            const { data, error } = await supabase
+            let eventsQuery = supabase
                 .from('events')
                 .select('id, title, description, start_at, end_at, location, type, is_recurring, creator_id, created_at')
                 .order('start_at', { ascending: true });
+
+            if (accessibleClans !== null) {
+                eventsQuery = eventsQuery.overlaps('clan_handles', accessibleClans);
+            }
+
+            const { data, error } = await eventsQuery;
 
             if (error) {
                 setFetchError(`Không thể tải sự kiện: ${error.message}`);
@@ -295,7 +331,7 @@ export default function EventsPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [accessibleClans]);
 
     useEffect(() => { fetchEvents(); }, [fetchEvents]);
 

@@ -46,6 +46,7 @@ export interface PersonDetail {
     biography?: string;
     tags?: string[];
     _privacyNote?: string;
+    clanHandles?: string[];
 }
 
 // ═══ Zodiac Year Helper ═══

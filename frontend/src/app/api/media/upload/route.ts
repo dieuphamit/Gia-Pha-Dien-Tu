@@ -27,13 +27,16 @@ export async function POST(req: NextRequest) {
 
     const sc = getServiceClient();
 
-    // 2. Kiểm tra role uploader (admin/editor được duyệt ngay)
+    // 2. Kiểm tra role uploader (admin/editor được duyệt ngay) + clan_access
     const { data: uploaderProfile } = await sc
         .from('profiles')
-        .select('role')
+        .select('role, clan_access')
         .eq('id', user.id)
         .maybeSingle();
     const isAdminOrEditor = uploaderProfile?.role === 'admin' || uploaderProfile?.role === 'editor';
+    const isAdminRole = uploaderProfile?.role === 'admin';
+    // Server-side clan_handles: admin has null (all), others use their whitelist
+    const profileClanHandles: string[] | null = isAdminRole ? null : ((uploaderProfile?.clan_access as string[] | null) ?? []);
 
     // 3. Đọc giới hạn từ app_settings
     const { data: settingsRows } = await sc
@@ -67,6 +70,8 @@ export async function POST(req: NextRequest) {
     const title = formData.get('title') as string | null;
     const description = formData.get('description') as string | null;
     const linkedPerson = formData.get('linked_person') as string | null;
+    // clan_handles: server-side validated from profile (ignore client hint for security)
+    const mediaClanHandles: string[] = profileClanHandles ?? ['pham'];
 
     if (!file) return NextResponse.json({ error: 'Không có file' }, { status: 400 });
 
@@ -127,6 +132,7 @@ export async function POST(req: NextRequest) {
             title: title || null,
             description: description || null,
             linked_person: linkedPerson || null,
+            clan_handles: mediaClanHandles,
         })
         .select('id, storage_url, media_type')
         .single();

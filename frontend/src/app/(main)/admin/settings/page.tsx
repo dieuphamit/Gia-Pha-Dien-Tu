@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Settings2, Loader2, Image, CheckCircle, Upload } from 'lucide-react';
+import { Settings2, Loader2, Image, CheckCircle, Upload, Contact } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,12 @@ const FEATURE_FLAGS: FeatureFlag[] = [
         label: 'Thư viện hình ảnh & tài liệu',
         description: 'Cho phép thành viên xem và tải lên ảnh, tài liệu. Khi tắt, mục "Thư viện" ẩn với thành viên (admin vẫn thấy để quản lý).',
         icon: Image,
+    },
+    {
+        key: 'feature_directory_enabled',
+        label: 'Danh bạ',
+        description: 'Hiển thị mục "Danh bạ" trên menu. Khi tắt, mục này ẩn với tất cả thành viên (admin vẫn thấy).',
+        icon: Contact,
     },
 ];
 

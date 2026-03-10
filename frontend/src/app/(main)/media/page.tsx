@@ -54,7 +54,7 @@ async function getToken() {
 
 // ── Main Page ────────────────────────────────────────────────
 export default function MediaLibraryPage() {
-    const { user, isAdmin, canEdit } = useAuth();
+    const { user, isAdmin, canEdit, accessibleClans } = useAuth();
     const [items, setItems] = useState<MediaItem[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -85,6 +85,7 @@ export default function MediaLibraryPage() {
         if (tab !== 'all') query = query.eq('state', tab);
         if (typeFilter !== 'all') query = query.eq('media_type', typeFilter);
         if (search.trim()) query = query.ilike('file_name', `%${search.trim()}%`);
+        if (accessibleClans !== null) query = query.overlaps('clan_handles', accessibleClans);
 
         const { data, count } = await query;
         if (data) {
@@ -107,7 +108,7 @@ export default function MediaLibraryPage() {
         }
         if (count !== null) setTotal(count);
         setLoading(false);
-    }, [tab, typeFilter, search, page]);
+    }, [tab, typeFilter, search, page, accessibleClans]);
 
     useEffect(() => { fetchMedia(); }, [fetchMedia]);
     useEffect(() => { setPage(0); }, [tab, typeFilter, search]);
@@ -170,6 +171,9 @@ export default function MediaLibraryPage() {
 
             const formData = new FormData();
             formData.append('file', file);
+            // clan_handles: server will validate via profile, but pass hint from client
+            const clanHandles = accessibleClans ?? ['pham'];
+            formData.append('clan_handles', JSON.stringify(clanHandles));
 
             const res = await fetch('/api/media/upload', {
                 method: 'POST',

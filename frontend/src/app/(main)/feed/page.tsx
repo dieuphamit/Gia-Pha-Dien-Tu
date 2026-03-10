@@ -29,7 +29,9 @@ import {
     fetchUnreadContentIds,
     markPostNotificationRead,
     markNotificationsReadByType,
+    fetchClans,
 } from '@/lib/supabase-data';
+import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
 
 // === Types ===
 
@@ -58,18 +60,37 @@ interface Comment {
 // === Post Composer ===
 
 function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
-    const { user, canEdit } = useAuth();
+    const { user, canEdit, accessibleClans } = useAuth();
     const [body, setBody] = useState('');
     const [title, setTitle] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [expanded, setExpanded] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Clan selector: chỉ hiện khi user có >1 clan hoặc là admin
+    const showClanPicker = accessibleClans === null || (accessibleClans?.length ?? 0) > 1;
+    const [availableClans, setAvailableClans] = useState<{ handle: string; displayName: string }[]>([]);
+    const [selectedClanHandles, setSelectedClanHandles] = useState<string[]>(accessibleClans ?? ['pham']);
+
+    useEffect(() => {
+        if (!showClanPicker) {
+            setSelectedClanHandles(accessibleClans ?? ['pham']);
+            return;
+        }
+        fetchClans().then(clans => {
+            const filtered = accessibleClans === null ? clans : clans.filter(c => accessibleClans.includes(c.handle));
+            setAvailableClans(filtered);
+            setSelectedClanHandles(filtered.map(c => c.handle));
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showClanPicker]);
+
     const handleSubmit = async () => {
         if (!body.trim() || !user) return;
         setSubmitting(true);
         setError(null);
         try {
+            const clanHandles = showClanPicker ? selectedClanHandles : (accessibleClans ?? ['pham']);
             const { data: newPost, error: insertError } = await supabase
                 .from('posts')
                 .insert({
@@ -78,6 +99,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
                     body: body.trim(),
                     type: 'general',
                     status: 'published',
+                    clan_handles: clanHandles,
                 })
                 .select('id')
                 .single();
@@ -128,12 +150,20 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
                         {error}
                     </div>
                 )}
+                {expanded && showClanPicker && availableClans.length > 0 && (
+                    <ClanCheckboxGroup
+                        clans={availableClans}
+                        selected={selectedClanHandles}
+                        onChange={setSelectedClanHandles}
+                        label="Đăng cho dòng họ"
+                    />
+                )}
                 {expanded && (
                     <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => { setExpanded(false); setError(null); }}>
                             Hủy
                         </Button>
-                        <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || submitting}>
+                        <Button size="sm" onClick={handleSubmit} disabled={!body.trim() || submitting || (showClanPicker && selectedClanHandles.length === 0)}>
                             <PenSquare className="mr-2 h-4 w-4" />
                             {submitting ? 'Đang đăng...' : 'Đăng bài'}
                         </Button>
@@ -424,7 +454,7 @@ function PostCard({
 // === Main Feed Page ===
 
 export default function FeedPage() {
-    const { user } = useAuth();
+    const { user, accessibleClans } = useAuth();
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -465,12 +495,19 @@ export default function FeedPage() {
         setFetchError(null);
         try {
             // Step 1: Fetch posts WITHOUT join (tránh lỗi FK không match)
-            const { data, error } = await supabase
+            let postsQuery = supabase
                 .from('posts')
                 .select('id, author_id, type, title, body, is_pinned, status, created_at, updated_at')
                 .eq('status', 'published')
                 .order('is_pinned', { ascending: false })
                 .order('created_at', { ascending: false });
+
+            // Filter by clan: non-admin users only see posts of their accessible clans
+            if (accessibleClans !== null) {
+                postsQuery = postsQuery.overlaps('clan_handles', accessibleClans);
+            }
+
+            const { data, error } = await postsQuery;
 
             if (error) {
                 setFetchError(`Không thể tải bảng tin: ${error.message}`);
@@ -515,7 +552,7 @@ export default function FeedPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [accessibleClans]);
 
     useEffect(() => { fetchPosts(); }, [fetchPosts]);
 

@@ -79,6 +79,7 @@ export function Sidebar() {
     const [unreadEventsCount, setUnreadEventsCount] = useState(0);
     // Feature toggles — đọc từ app_settings, cập nhật realtime
     const [featureMedia, setFeatureMedia] = useState(true);
+    const [featureDirectory, setFeatureDirectory] = useState(true);
 
     // Fetch feature flags từ app_settings
     useEffect(() => {
@@ -92,6 +93,7 @@ export function Sidebar() {
                 const map: Record<string, string> = {};
                 data.forEach((r) => { map[r.key] = r.value; });
                 setFeatureMedia(map['feature_media_enabled'] !== 'false');
+                setFeatureDirectory(map['feature_directory_enabled'] !== 'false');
             });
 
         // Realtime: sidebar cập nhật ngay khi admin thay đổi setting
@@ -103,6 +105,9 @@ export function Sidebar() {
                 (payload) => {
                     if (payload.new.key === 'feature_media_enabled') {
                         setFeatureMedia(payload.new.value !== 'false');
+                    }
+                    if (payload.new.key === 'feature_directory_enabled') {
+                        setFeatureDirectory(payload.new.value !== 'false');
                     }
                 }
             )
@@ -294,6 +299,7 @@ export function Sidebar() {
             <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
                 {navItems
                     .filter(item => item.href !== '/media' || featureMedia || isAdmin)
+                    .filter(item => item.href !== '/directory' || featureDirectory || isAdmin)
                     .map((item) => {
                         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
                         const badge =

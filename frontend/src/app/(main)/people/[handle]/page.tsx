@@ -68,7 +68,7 @@ export default function PersonProfilePage() {
     const params = useParams();
     const router = useRouter();
     const handle = params.handle as string;
-    const { isAdmin, canEdit, isMember, user } = useAuth();
+    const { isAdmin, canEdit, isMember, user, accessibleClans } = useAuth();
     const [person, setPerson] = useState<PersonDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
@@ -85,6 +85,12 @@ export default function PersonProfilePage() {
     const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
     const [familyChildrenMap, setFamilyChildrenMap] = useState<Map<string, string[]>>(new Map());
     const [personNameMap, setPersonNameMap] = useState<Map<string, string>>(new Map());
+
+    // Editor can only edit people whose clan_handles overlap with their accessible clans
+    const canEditThisPerson = isAdmin || (canEdit && (
+        accessibleClans === null ||
+        (person?.clanHandles ?? []).some(h => accessibleClans.includes(h))
+    ));
 
     // Media state
     interface MediaItem {
@@ -162,6 +168,7 @@ export default function PersonProfilePage() {
                     firstName: row.first_name as string | undefined,
                     nickName: row.nick_name as string | undefined,
                     avatarUrl: (row.avatar_url as string | null) ?? undefined,
+                    clanHandles: clanHandlesRaw,
                 } as PersonDetail);
             }
         } catch { /* ignore */ }
@@ -638,7 +645,7 @@ export default function PersonProfilePage() {
 
                 {/* Edit / propose buttons */}
                 <div className="flex items-center gap-2">
-                    {canEdit && !editing && (
+                    {canEditThisPerson && !editing && (
                         <>
                             <Button variant="outline" size="sm" onClick={startEdit}>
                                 <Pencil className="h-4 w-4 mr-2" />
@@ -656,7 +663,7 @@ export default function PersonProfilePage() {
                         <ContributeEditPersonDialog person={person} />
                     )}
                 </div>
-                {canEdit && editing && (
+                {canEditThisPerson && editing && (
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => { setEditing(false); setSaveError(''); }} disabled={saving}>
                             <X className="h-4 w-4 mr-2" />
