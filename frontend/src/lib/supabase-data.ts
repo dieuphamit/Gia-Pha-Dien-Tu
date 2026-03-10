@@ -505,8 +505,68 @@ export async function addPerson(person: {
     return { error: null };
 }
 
-/** Delete a person from the tree */
+/** Delete a person from the tree, cleaning up all family references first */
 export async function deletePerson(handle: string, actorId?: string, entityName?: string): Promise<{ error: string | null }> {
+    // 1. Cleanup spouse families (person is father or mother)
+    const { data: spouseFams } = await supabase
+        .from('families')
+        .select('handle, father_handle, mother_handle, children')
+        .or(`father_handle.eq.${handle},mother_handle.eq.${handle}`);
+
+    for (const fam of spouseFams || []) {
+        const update: Record<string, null> = {};
+        if (fam.father_handle === handle) update.father_handle = null;
+        if (fam.mother_handle === handle) update.mother_handle = null;
+
+        const newFather = fam.father_handle === handle ? null : fam.father_handle;
+        const newMother = fam.mother_handle === handle ? null : fam.mother_handle;
+        const children = (fam.children as string[]) || [];
+
+        if (!newFather && !newMother && children.length === 0) {
+            // Family trống hoàn toàn → xóa luôn
+            await supabase.from('families').delete().eq('handle', fam.handle);
+        } else {
+            // Còn thành viên khác → chỉ null slot của người bị xóa
+            await supabase.from('families').update(update).eq('handle', fam.handle);
+            // Cập nhật families[] của người còn lại nếu family bị xóa
+        }
+
+        // Cập nhật families[] của spouse còn lại nếu family bị xóa hoàn toàn
+        if (!newFather && !newMother && children.length === 0) {
+            const remainingSpouse = fam.father_handle === handle ? fam.mother_handle : fam.father_handle;
+            if (remainingSpouse) {
+                const { data: sd } = await supabase.from('people').select('families').eq('handle', remainingSpouse).single();
+                if (sd) {
+                    await supabase.from('people').update({
+                        families: (sd.families as string[]).filter((f: string) => f !== fam.handle),
+                    }).eq('handle', remainingSpouse);
+                }
+            }
+            // Cập nhật parent_families[] của children nếu family bị xóa
+            for (const childHandle of children) {
+                const { data: cd } = await supabase.from('people').select('parent_families').eq('handle', childHandle).single();
+                if (cd) {
+                    await supabase.from('people').update({
+                        parent_families: (cd.parent_families as string[]).filter((f: string) => f !== fam.handle),
+                    }).eq('handle', childHandle);
+                }
+            }
+        }
+    }
+
+    // 2. Cleanup parent families (person là con)
+    const { data: childFams } = await supabase
+        .from('families')
+        .select('handle, children')
+        .contains('children', [handle]);
+
+    for (const fam of childFams || []) {
+        await supabase.from('families').update({
+            children: (fam.children as string[]).filter((c: string) => c !== handle),
+        }).eq('handle', fam.handle);
+    }
+
+    // 3. Xóa người
     const { error } = await supabase
         .from('people')
         .delete()
@@ -819,18 +879,21 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
         }
     }
 
-    return families.map((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
-        const fatherName = f.father_handle ? nameMap[f.father_handle] : undefined;
-        const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;
-        const fatherGen = f.father_handle ? generationMap[f.father_handle] : undefined;
-        const motherGen = f.mother_handle ? generationMap[f.mother_handle] : undefined;
-        const parentGeneration = Math.max(fatherGen ?? 0, motherGen ?? 0) || undefined;
-        const parts = [fatherName, motherName].filter(Boolean);
-        const label = parts.length > 0
-            ? `${f.handle} — ${parts.join(' & ')}`
-            : f.handle;
-        return { handle: f.handle, fatherName, motherName, label, parentGeneration };
-    });
+    return families
+        .map((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
+            const fatherName = f.father_handle ? nameMap[f.father_handle] : undefined;
+            const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;
+            const fatherGen = f.father_handle ? generationMap[f.father_handle] : undefined;
+            const motherGen = f.mother_handle ? generationMap[f.mother_handle] : undefined;
+            const parentGeneration = Math.max(fatherGen ?? 0, motherGen ?? 0) || undefined;
+            const parts = [fatherName, motherName].filter(Boolean);
+            const label = parts.length > 0
+                ? `${f.handle} — ${parts.join(' & ')}`
+                : f.handle;
+            return { handle: f.handle, fatherName, motherName, label, parentGeneration };
+        })
+        // Ẩn các ghost families (không tìm thấy tên của bất kỳ thành viên nào)
+        .filter(f => f.fatherName || f.motherName);
 }
 
 /** Fetch all people minimal info (for dropdown) */

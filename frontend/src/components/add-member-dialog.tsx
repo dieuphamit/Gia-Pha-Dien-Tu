@@ -508,16 +508,8 @@ function StepRelation({
                         onDone(`✅ Đã tạo gia đình mới ${newFH} cho ${personName} và vợ/chồng`);
                     }
                 } else {
-                    // Không chọn vợ/chồng — tạo gia đình chỉ với người này
-                    const newFH = await generateFamilyHandle();
-                    const r = await addFamily({
-                        handle: newFH,
-                        fatherHandle: personRole === 'father' ? finalPersonHandle : undefined,
-                        motherHandle: personRole === 'mother' ? finalPersonHandle : undefined,
-                    });
-                    if (r.error) { setError(r.error); setLoading(false); return; }
-                    await addPersonAsSpouse(finalPersonHandle, newFH, personRole);
-                    onDone(`✅ Đã tạo gia đình mới ${newFH} cho ${personName}`);
+                    // Không chọn vợ/chồng — không tạo gia đình, chỉ thêm người vào hệ thống
+                    onDone(`✅ Đã thêm ${personName} vào hệ thống (chưa có gia đình)`);
                 }
             }
         } catch (e: unknown) {
