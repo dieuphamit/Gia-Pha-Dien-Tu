@@ -30,7 +30,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
-import { markEventNotificationRead } from '@/lib/supabase-data';
+import { markEventNotificationRead, fetchClans } from '@/lib/supabase-data';
+import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ interface EventDetail {
     is_recurring: boolean;
     creator_id: string;
     created_at: string;
+    clan_handles: string[];
     creator_name?: string;
 }
 
@@ -89,6 +91,7 @@ function EditEventDialog({
     onOpenChange: (v: boolean) => void;
     onSaved: () => void;
 }) {
+    const { accessibleClans } = useAuth();
     const [title, setTitle] = useState(event.title);
     const [description, setDescription] = useState(event.description ?? '');
     const [startAt, setStartAt] = useState(
@@ -102,10 +105,28 @@ function EditEventDialog({
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Clan picker
+    const showClanPicker = accessibleClans === null || (accessibleClans?.length ?? 0) > 1;
+    const [availableClans, setAvailableClans] = useState<{ handle: string; displayName: string }[]>([]);
+    const [selectedClanHandles, setSelectedClanHandles] = useState<string[]>(event.clan_handles);
+
+    useEffect(() => {
+        if (!showClanPicker) {
+            setSelectedClanHandles(event.clan_handles.length > 0 ? event.clan_handles : (accessibleClans ?? ['pham']));
+            return;
+        }
+        fetchClans().then(clans => {
+            const filtered = accessibleClans === null ? clans : clans.filter(c => accessibleClans.includes(c.handle));
+            setAvailableClans(filtered);
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showClanPicker]);
+
     const handleSave = async () => {
         if (!title.trim() || !startAt) return;
         setSubmitting(true);
         setError(null);
+        const clanHandles = showClanPicker ? selectedClanHandles : (accessibleClans ?? ['pham']);
         const { error: updateError } = await supabase
             .from('events')
             .update({
@@ -115,6 +136,7 @@ function EditEventDialog({
                 end_at: endAt ? new Date(endAt).toISOString() : null,
                 location: location.trim() || null,
                 type,
+                clan_handles: clanHandles,
             })
             .eq('id', event.id);
 
@@ -175,6 +197,14 @@ function EditEventDialog({
                             <option key={k} value={k}>{v.emoji} {v.label}</option>
                         ))}
                     </select>
+                    {showClanPicker && availableClans.length > 0 && (
+                        <ClanCheckboxGroup
+                            clans={availableClans}
+                            selected={selectedClanHandles}
+                            onChange={setSelectedClanHandles}
+                            label="Dành cho dòng họ"
+                        />
+                    )}
                     {error && (
                         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
                             <AlertCircle className="h-4 w-4 shrink-0" />
@@ -184,7 +214,7 @@ function EditEventDialog({
                     <Button
                         className="w-full"
                         onClick={handleSave}
-                        disabled={!title.trim() || !startAt || submitting}
+                        disabled={!title.trim() || !startAt || submitting || (showClanPicker && selectedClanHandles.length === 0)}
                     >
                         {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
                     </Button>
@@ -227,7 +257,7 @@ export default function EventDetailPage() {
             // Step 1: Fetch event row
             const { data, error } = await supabase
                 .from('events')
-                .select('id, title, description, start_at, end_at, location, type, is_recurring, creator_id, created_at')
+                .select('id, title, description, start_at, end_at, location, type, is_recurring, creator_id, created_at, clan_handles')
                 .eq('id', id)
                 .maybeSingle();
 
@@ -249,7 +279,7 @@ export default function EventDetailPage() {
                 }
             }
 
-            setEvent({ ...data, creator_name });
+            setEvent({ ...data, clan_handles: (data.clan_handles as string[] | null) ?? [], creator_name });
 
             // Step 3: Fetch RSVPs
             const { data: rsvpData } = await supabase
