@@ -233,8 +233,8 @@ export default function PersonProfilePage() {
             tocOverride: person.tocOverride ?? false,
             clanTocMap: (() => {
                 const existing = person.clanTocMap ?? {};
-                // Nếu chưa có per-clan data nhưng đã override thủ công → pre-fill từ tocType
-                if (Object.keys(existing).length === 0 && person.tocOverride && person.tocType) {
+                // Nếu chưa có per-clan data → pre-fill từ toc_type hiện tại để hiển thị trên UI
+                if (Object.keys(existing).length === 0 && person.tocType) {
                     const primaryClan = personClanHandle[0];
                     return primaryClan ? { [primaryClan]: person.tocType } : {};
                 }
