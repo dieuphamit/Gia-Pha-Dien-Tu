@@ -4,8 +4,12 @@
  */
 import { Resend } from 'resend';
 
-/** Địa chỉ gửi mail (phải verify domain trên Resend) */
-const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'noreply@giaphadientu.vn';
+/**
+ * Địa chỉ gửi mail.
+ * - Nếu đã verify domain trên Resend: set EMAIL_FROM=noreply@yourdomain.com
+ * - Nếu chưa verify domain (free tier): để trống → dùng onboarding@resend.dev
+ */
+const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'onboarding@resend.dev';
 
 /**
  * Khi chưa có domain riêng, set EMAIL_TEST_RECIPIENT để chuyển hướng
