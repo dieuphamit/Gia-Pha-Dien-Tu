@@ -298,11 +298,9 @@ export default function PersonProfilePage() {
             typedPeople
                 .filter(p => {
                     if (p.handle === handle) return false; // loại chính mình
-                    if (!pGen || !p.generation) return true; // nếu thiếu đời → vẫn hiển thị
-                    return p.generation <= pGen
-                        && p.gender !== currentPersonData?.gender
-                        && p.gender !== 0
-                        && currentPersonData?.gender !== 0;
+                    // Chỉ lọc giới tính khi cả 2 đều có giá trị hợp lệ (≠ 0/null)
+                    if (currentPersonData?.gender && p.gender && p.gender === currentPersonData.gender) return false;
+                    return true;
                 })
                 .map(p => ({
                     handle: p.handle,
