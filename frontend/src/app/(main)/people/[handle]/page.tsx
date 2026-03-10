@@ -296,16 +296,14 @@ export default function PersonProfilePage() {
 
         setAllSpouseOptions(
             typedPeople
-                .filter(p => !pGen || (p.generation && p.generation <= pGen && p.gender !== currentPersonData?.gender && p.gender !== 0 && currentPersonData?.gender !== 0))
-                .map(p => ({
-                    handle: p.handle,
-                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
-                }))
-        );
-
-        setAllSpouseOptions(
-            (people || [])
-                .filter(p => !pGen || (p.generation && p.generation <= pGen && p.gender !== currentPerson?.data?.gender && p.gender !== 0 && currentPerson?.data?.gender !== 0))
+                .filter(p => {
+                    if (p.handle === handle) return false; // loại chính mình
+                    if (!pGen || !p.generation) return true; // nếu thiếu đời → vẫn hiển thị
+                    return p.generation <= pGen
+                        && p.gender !== currentPersonData?.gender
+                        && p.gender !== 0
+                        && currentPersonData?.gender !== 0;
+                })
                 .map(p => ({
                     handle: p.handle,
                     label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
