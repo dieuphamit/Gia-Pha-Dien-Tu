@@ -84,17 +84,20 @@ export function generateBookData(
     const personMap = new Map(people.map(p => [p.handle, p]));
     const familyMap = new Map(families.map(f => [f.handle, f]));
 
-    // Determine if a person is a "main member" of this book.
-    // isPatrilineal is the primary criterion (correctly set for Phạm and any clan with proper data).
-    // Fallback: if the dataset has NO patrilineal members at all (e.g. a new clan whose data
-    // hasn't been tagged yet), treat everyone as main to avoid empty chapters.
-    const hasAnyPatrilineal = people.some(p => p.isPatrilineal);
+    // Resolve effective toc_type for a person in the context of this book's clan.
+    // Prefer clanTocMap[clanHandle] if set, otherwise fall back to global tocType/isPatrilineal.
+    const effectiveTocType = (p: TreeNode): 'chinh' | 'than' | 'ngoai' => {
+        if (clanHandle && p.clanTocMap?.[clanHandle]) return p.clanTocMap[clanHandle];
+        return p.tocType ?? (p.isPatrilineal ? 'chinh' : 'ngoai');
+    };
+
+    const hasAnyPatrilineal = people.some(p => effectiveTocType(p) === 'chinh');
     const isMainMember = (p: TreeNode): boolean =>
-        hasAnyPatrilineal ? p.isPatrilineal : true;
+        hasAnyPatrilineal ? effectiveTocType(p) === 'chinh' : true;
 
     // Determine if a person is "external" (Ngoại tộc) for spouse/child notes.
     const isExternal = (p: TreeNode): boolean =>
-        hasAnyPatrilineal ? !p.isPatrilineal : false;
+        hasAnyPatrilineal ? effectiveTocType(p) !== 'chinh' : false;
 
     // ── Step 1: Assign generations from DB (1-based → 0-based) ──
     // DB generation is the source of truth (auto-computed when members are added).
@@ -193,7 +196,7 @@ export function generateBookData(
             birthYear: p.birthYear,
             deathYear: p.deathYear,
             isLiving: p.isLiving,
-            isPatrilineal: p.isPatrilineal,
+            isPatrilineal: effectiveTocType(p) === 'chinh',
             generation: gen,
             fatherName,
             motherName,
@@ -230,8 +233,8 @@ export function generateBookData(
         .map(p => ({
             name: p.displayName,
             generation: generations.get(p.handle) ?? 0,
-            isPatrilineal: p.isPatrilineal,
-            isAffiliated: p.isAffiliatedFamily ?? false,
+            isPatrilineal: effectiveTocType(p) === 'chinh',
+            isAffiliated: effectiveTocType(p) === 'than',
         }))
         .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
