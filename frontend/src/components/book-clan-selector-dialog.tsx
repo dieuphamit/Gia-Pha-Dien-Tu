@@ -30,18 +30,17 @@ export function BookClanSelectorDialog({ open, clans, onSelect, onClose }: Props
                         Chọn dòng họ
                     </DialogTitle>
                 </DialogHeader>
-                <div className="space-y-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                     {clans.map((clan) => (
                         <button
                             key={clan.handle}
                             onClick={() => { onSelect(clan.handle); onClose(); }}
-                            className="w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm font-medium
-                                transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                            className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border
+                                transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary
+                                focus:outline-none focus:ring-2 focus:ring-ring"
                         >
-                            <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-base shrink-0">
-                                {clan.displayName.charAt(0).toUpperCase()}
-                            </span>
-                            <span>Họ {clan.displayName}</span>
+                            <span className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground flex items-center justify-center shrink-0" />
+                            {clan.displayName}
                         </button>
                     ))}
                 </div>

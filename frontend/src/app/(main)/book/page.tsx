@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, BookOpen, Eye, Palette, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchTreeData, fetchClans } from '@/lib/supabase-data';
+import { useAuth } from '@/components/auth-provider';
 import { generateBookData, type BookData, type BookPerson, type BookChapter } from '@/lib/book-generator';
 import { formatDateVN } from '@/components/ui/date-input';
 import type { TreeNode, TreeFamily } from '@/lib/tree-layout';
@@ -69,14 +70,31 @@ export default function BookPage() {
 
 function BookPageContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const { isAdmin, accessibleClans } = useAuth();
     const clanHandle = searchParams.get('clan') ?? undefined;
 
+    const [availableClans, setAvailableClans] = useState<Array<{ handle: string; displayName: string }>>([]);
     const [bookData, setBookData] = useState<BookData | null>(null);
     const [loading, setLoading] = useState(true);
     const [previewMode, setPreviewMode] = useState(false);
     const [theme, setTheme] = useState<ThemeKey>('amber');
     const [showThemePicker, setShowThemePicker] = useState(false);
     const pagesRef = useRef<HTMLDivElement>(null);
+
+    // Load available clans and redirect to first if none selected
+    useEffect(() => {
+        fetchClans().then((all) => {
+            const accessible = isAdmin
+                ? all
+                : all.filter((c) => (accessibleClans ?? []).includes(c.handle));
+            setAvailableClans(accessible);
+            if (!clanHandle && accessible.length > 0) {
+                router.replace(`/book?clan=${accessible[0].handle}`);
+            }
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAdmin, accessibleClans]);
 
     // Auto-scroll to top when entering preview mode
     useEffect(() => {
@@ -274,12 +292,36 @@ function BookPageContent() {
             {/* ═══ TOOLBAR ═══ */}
             <div className="no-print sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b shadow-sm">
                 <div className="px-4 py-2.5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <Link href="/tree">
                             <Button variant="ghost" size="sm">
                                 <ArrowLeft className="w-4 h-4 mr-1" /> Cây gia phả
                             </Button>
                         </Link>
+                        {availableClans.length > 1 && (
+                            <div className="flex items-center gap-1.5">
+                                {availableClans.map(c => (
+                                    <button
+                                        key={c.handle}
+                                        onClick={() => router.push(`/book?clan=${c.handle}`)}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                            clanHandle === c.handle
+                                                ? 'bg-primary text-primary-foreground border-primary'
+                                                : 'bg-background text-foreground border-border hover:bg-muted'
+                                        }`}
+                                    >
+                                        <span className={`h-3 w-3 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                            clanHandle === c.handle ? 'border-primary-foreground' : 'border-muted-foreground'
+                                        }`}>
+                                            {clanHandle === c.handle && (
+                                                <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                                            )}
+                                        </span>
+                                        {c.displayName}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <span className="text-xs text-muted-foreground hidden sm:inline">
                             {bookData.totalMembers} thành viên · {bookData.totalGenerations} đời · {sections.length} trang
                         </span>

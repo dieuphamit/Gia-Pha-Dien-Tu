@@ -281,7 +281,7 @@ export default function TreeViewPage() {
             const clanParam = searchParams.get('clan');
             const defaultClan = (clanParam && accessible.some(c => c.handle === clanParam))
                 ? clanParam
-                : accessible[0].handle;
+                : (accessible.find(c => c.handle === 'pham') ?? accessible[0]).handle;
             setSelectedClan(defaultClan);
             clanInitialized.current = true;
         });
@@ -820,21 +820,33 @@ export default function TreeViewPage() {
                         </p>
                     </div>
                     {availableClans.length > 1 && (
-                        <select
-                            value={selectedClan ?? ''}
-                            onChange={e => {
-                                setSelectedClan(e.target.value);
-                                setTreeData(null);
-                                setFocusPerson(null);
-                                setViewMode('full');
-                            }}
-                            className="h-8 rounded-md border px-2 text-sm bg-background text-foreground cursor-pointer"
-                            title="Chọn dòng họ"
-                        >
+                        <div className="flex items-center gap-1.5 flex-wrap">
                             {availableClans.map(c => (
-                                <option key={c.handle} value={c.handle}>{c.displayName}</option>
+                                <button
+                                    key={c.handle}
+                                    onClick={() => {
+                                        setSelectedClan(c.handle);
+                                        setTreeData(null);
+                                        setFocusPerson(null);
+                                        setViewMode('full');
+                                    }}
+                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                        selectedClan === c.handle
+                                            ? 'bg-primary text-primary-foreground border-primary'
+                                            : 'bg-background text-foreground border-border hover:bg-muted'
+                                    }`}
+                                >
+                                    <span className={`h-3 w-3 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                        selectedClan === c.handle ? 'border-primary-foreground' : 'border-muted-foreground'
+                                    }`}>
+                                        {selectedClan === c.handle && (
+                                            <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                                        )}
+                                    </span>
+                                    {c.displayName}
+                                </button>
                             ))}
-                        </select>
+                        </div>
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">

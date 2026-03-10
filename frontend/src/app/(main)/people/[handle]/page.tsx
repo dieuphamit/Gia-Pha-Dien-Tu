@@ -776,39 +776,67 @@ export default function PersonProfilePage() {
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="text-sm font-medium leading-none">Phân loại trong họ tộc</label>
-                                <div className="flex gap-2 mt-2">
-                                    {[
-                                        { value: 'chinh', label: 'Chính Tộc', desc: 'Họ Phạm', activeClass: 'bg-rose-600 hover:bg-rose-700 border-rose-600 text-white' },
-                                        { value: 'than',  label: 'Thân Tộc',  desc: 'Có thông tin cha mẹ', activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
-                                        { value: 'ngoai', label: 'Ngoại Tộc', desc: 'Vợ/chồng lấy vào', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
-                                    ].map(opt => {
-                                        const isSelected = form.tocType === opt.value;
-                                        return (
-                                            <Button
-                                                key={opt.value}
-                                                type="button"
-                                                size="sm"
-                                                variant={isSelected ? 'default' : 'outline'}
-                                                className={isSelected ? opt.activeClass : ''}
-                                                onClick={() => setForm(p => ({
-                                                    ...p,
-                                                    tocType: opt.value as 'chinh' | 'than' | 'ngoai',
-                                                    tocOverride: true,
-                                                    isPatrilineal: opt.value === 'chinh',
-                                                    isAffiliatedFamily: opt.value === 'than',
-                                                }))}
-                                            >
-                                                {opt.label}
-                                            </Button>
-                                        );
-                                    })}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    <span className="text-rose-600 font-medium">Chính Tộc</span> — họ Phạm.{' '}
-                                    <span className="text-teal-600 font-medium">Thân Tộc</span> — có thông tin cha mẹ trong hệ thống.{' '}
-                                    <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào, không rõ gốc.
-                                </p>
+                                {(() => {
+                                    const personClanNames = availableClans
+                                        .filter(c => form.clanHandles.includes(c.handle))
+                                        .map(c => c.displayName);
+                                    const chinhDesc = personClanNames.length > 0
+                                        ? personClanNames.join(', ')
+                                        : 'Cùng họ với dòng tộc chính';
+                                    return (
+                                        <>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <label className="text-sm font-medium leading-none">Phân loại trong họ tộc</label>
+                                                {form.tocOverride && (
+                                                    <>
+                                                        <Badge variant="outline" className="text-orange-600 border-orange-400 text-xs px-1.5 py-0">
+                                                            Đã ghi đè thủ công
+                                                        </Badge>
+                                                        <button
+                                                            type="button"
+                                                            className="text-xs text-muted-foreground hover:text-foreground underline"
+                                                            onClick={() => setForm(p => ({ ...p, tocOverride: false }))}
+                                                        >
+                                                            ↺ Tự động tính lại
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2 mt-2">
+                                                {[
+                                                    { value: 'chinh', label: 'Chính Tộc', activeClass: 'bg-rose-600 hover:bg-rose-700 border-rose-600 text-white' },
+                                                    { value: 'than',  label: 'Thân Tộc',  activeClass: 'bg-teal-600 hover:bg-teal-700 border-teal-600 text-white' },
+                                                    { value: 'ngoai', label: 'Ngoại Tộc', activeClass: 'bg-slate-500 hover:bg-slate-600 border-slate-500 text-white' },
+                                                ].map(opt => {
+                                                    const isSelected = form.tocType === opt.value;
+                                                    return (
+                                                        <Button
+                                                            key={opt.value}
+                                                            type="button"
+                                                            size="sm"
+                                                            variant={isSelected ? 'default' : 'outline'}
+                                                            className={isSelected ? opt.activeClass : ''}
+                                                            onClick={() => setForm(p => ({
+                                                                ...p,
+                                                                tocType: opt.value as 'chinh' | 'than' | 'ngoai',
+                                                                tocOverride: true,
+                                                                isPatrilineal: opt.value === 'chinh',
+                                                                isAffiliatedFamily: opt.value === 'than',
+                                                            }))}
+                                                        >
+                                                            {opt.label}
+                                                        </Button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                <span className="text-rose-600 font-medium">Chính Tộc</span> — {chinhDesc}.{' '}
+                                                <span className="text-teal-600 font-medium">Thân Tộc</span> — có thông tin cha mẹ trong hệ thống.{' '}
+                                                <span className="text-slate-500 font-medium">Ngoại Tộc</span> — vợ/chồng lấy vào, không rõ gốc.
+                                            </p>
+                                        </>
+                                    );
+                                })()}
                                 {isAdmin && availableClans.length > 0 && (
                                     <div className="mt-3">
                                         <ClanCheckboxGroup

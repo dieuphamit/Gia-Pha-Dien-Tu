@@ -174,24 +174,44 @@ export default function AdminUsersPage() {
         }
     }, [users, currentUser]);
 
-    const handleApprove = useCallback(async (userId: string) => {
-        const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+    const [approveDialogUser, setApproveDialogUser] = useState<ProfileUser | null>(null);
+    const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+    const [approvalClanAccess, setApprovalClanAccess] = useState<string[]>([]);
+
+    const handleApprove = useCallback((userId: string) => {
+        const target = users.find(u => u.id === userId);
+        if (!target) return;
+        setApproveDialogUser(target);
+        setApprovalClanAccess(target.clan_access ?? []);
+        setApproveDialogOpen(true);
+    }, [users]);
+
+    const handleConfirmApprove = useCallback(async () => {
+        if (!approveDialogUser) return;
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: 'active', clan_access: approvalClanAccess })
+            .eq('id', approveDialogUser.id);
         if (!error) {
-            const target = users.find(u => u.id === userId);
-            setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+            setUsers(prev => prev.map(u =>
+                u.id === approveDialogUser.id
+                    ? { ...u, status: 'active', clan_access: approvalClanAccess }
+                    : u
+            ));
+            setApproveDialogOpen(false);
             window.dispatchEvent(new Event('refresh-badges'));
             if (currentUser) {
                 insertAuditLog({
                     actorId: currentUser.id,
                     action: 'APPROVE',
                     entityType: 'profile',
-                    entityId: userId,
-                    entityName: target?.email,
-                    metadata: { field: 'status', newValue: 'active' },
+                    entityId: approveDialogUser.id,
+                    entityName: approveDialogUser.email,
+                    metadata: { field: 'status', newValue: 'active', clan_access: approvalClanAccess },
                 });
             }
         }
-    }, [users, currentUser]);
+    }, [approveDialogUser, approvalClanAccess, currentUser]);
 
     const handleReject = useCallback(async (userId: string) => {
         const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', userId);
@@ -629,6 +649,42 @@ export default function AdminUsersPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Approve + Clan Dialog */}
+            <Dialog open={approveDialogOpen} onOpenChange={open => { if (!open) setApproveDialogOpen(false); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Phê duyệt tài khoản</DialogTitle>
+                        <DialogDescription>
+                            Chọn dòng họ mà <strong>{approveDialogUser?.display_name || approveDialogUser?.email}</strong> được phép xem.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 mt-4">
+                        {ALL_CLAN_HANDLES.map(handle => (
+                            <label key={handle} className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300"
+                                    checked={approvalClanAccess.includes(handle)}
+                                    onChange={e => setApprovalClanAccess(prev =>
+                                        e.target.checked ? [...prev, handle] : prev.filter(c => c !== handle)
+                                    )}
+                                />
+                                <span className="text-sm font-medium">{CLAN_LABELS[handle] ?? handle}</span>
+                            </label>
+                        ))}
+                        {approvalClanAccess.length === 0 && (
+                            <p className="text-xs text-amber-600">
+                                ⚠️ Chưa chọn dòng họ — user sẽ không xem được nội dung sau khi được duyệt.
+                            </p>
+                        )}
+                    </div>
+                    <div className="flex gap-2 pt-4">
+                        <Button className="flex-1" onClick={handleConfirmApprove}>✅ Phê duyệt</Button>
+                        <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Hủy</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Clan Access Dialog */}
             <Dialog open={clanDialogOpen} onOpenChange={open => { if (!open) setClanDialogOpen(false); }}>
