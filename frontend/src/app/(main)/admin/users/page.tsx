@@ -35,14 +35,14 @@ import { AddMemberDialog } from '@/components/add-member-dialog';
 import { insertAuditLog } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
-type ClanFilter = 'all' | 'pham' | 'ngo' | 'dinh';
+type ClanFilter = 'all' | 'pham' | 'huynh' | 'dinh';
 
 const CLAN_LABELS: Record<string, string> = {
     pham: 'Họ Phạm',
-    ngo: 'Họ Ngô',
+    huynh: 'Họ Huỳnh',
     dinh: 'Họ Đinh',
 };
-const ALL_CLAN_HANDLES = ['pham', 'ngo', 'dinh'];
+const ALL_CLAN_HANDLES = ['pham', 'huynh', 'dinh'];
 
 const ROLE_COLORS: Record<string, string> = {
     admin: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
@@ -452,7 +452,7 @@ export default function AdminUsersPage() {
                             {([
                                 { key: 'all', label: 'Tất cả họ' },
                                 { key: 'pham', label: 'Họ Phạm' },
-                                { key: 'ngo', label: 'Họ Ngô' },
+                                { key: 'huynh', label: 'Họ Huỳnh' },
                                 { key: 'dinh', label: 'Họ Đinh' },
                             ] as { key: ClanFilter; label: string }[]).map(tab => (
                                 <button

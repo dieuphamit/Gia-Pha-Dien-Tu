@@ -36,8 +36,8 @@ interface Person {
     clanHandles: string[];
 }
 
-const CLAN_LABELS: Record<string, string> = { pham: 'Họ Phạm', ngo: 'Họ Ngô', dinh: 'Họ Đinh' };
-type ClanFilter = 'all' | 'pham' | 'ngo' | 'dinh';
+const CLAN_LABELS: Record<string, string> = { pham: 'Họ Phạm', huynh: 'Họ Huỳnh', dinh: 'Họ Đinh' };
+type ClanFilter = 'all' | 'pham' | 'huynh' | 'dinh';
 
 type SortKey = 'displayName' | 'gender' | 'generation' | 'birthDate' | 'deathDate' | 'isLiving';
 
@@ -272,7 +272,7 @@ export default function PeopleListPage() {
                 {isAdmin && (
                     <div className="flex gap-2">
                         <Button variant={clanFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('all')}>Tất cả họ</Button>
-                        {(['pham', 'ngo', 'dinh'] as const).map(c => (
+                        {(['pham', 'huynh', 'dinh'] as const).map(c => (
                             <Button key={c} variant={clanFilter === c ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c)}>
                                 {CLAN_LABELS[c]}
                             </Button>
