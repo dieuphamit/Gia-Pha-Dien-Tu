@@ -24,10 +24,6 @@ UPDATE people
 SET clan_handles = array_replace(clan_handles, 'ngo', 'huynh')
 WHERE 'ngo' = ANY(clan_handles);
 
-UPDATE families
-SET clan_handles = array_replace(clan_handles, 'ngo', 'huynh')
-WHERE 'ngo' = ANY(clan_handles);
-
 UPDATE posts
 SET clan_handles = array_replace(clan_handles, 'ngo', 'huynh')
 WHERE 'ngo' = ANY(clan_handles);
