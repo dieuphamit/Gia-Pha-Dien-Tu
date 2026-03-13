@@ -178,6 +178,19 @@ function buildSubtree(
         const childFamily = candidateFamilies.find(f => f.fatherHandle && f.motherHandle)
             ?? candidateFamilies[0];
 
+        // If the found family's spouse has an unvisited parent family, defer this child.
+        // The child's family will be built when the spouse's parent family is traversed,
+        // keeping cross-clan subtrees in the correct branch of the tree.
+        if (childFamily) {
+            const spouseHandle = childFamily.fatherHandle === childHandle
+                ? childFamily.motherHandle
+                : childFamily.fatherHandle;
+            const spouseNode = spouseHandle ? personMap.get(spouseHandle) : undefined;
+            if (spouseNode?.parentFamilies.some(pfId => familyMap.has(pfId) && !visited.has(pfId))) {
+                continue;
+            }
+        }
+
         if (childFamily) {
             const sub = buildSubtree(childFamily, personMap, familyMap, visited);
             if (sub) {
@@ -433,6 +446,13 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
     for (const f of families) {
         for (const ch of f.children) childOfAnyFamily.add(ch);
     }
+    // Also treat people as non-root if their parentFamilies reference an existing family,
+    // even when the family's children array doesn't include them (data inconsistency guard).
+    for (const p of people) {
+        for (const pfId of p.parentFamilies) {
+            if (familyMap.has(pfId)) childOfAnyFamily.add(p.handle);
+        }
+    }
     const rootFamilies = families.filter(f => {
         const fh = f.fatherHandle ? personMap.get(f.fatherHandle) : null;
         const mh = f.motherHandle ? personMap.get(f.motherHandle) : null;
@@ -446,10 +466,19 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
     const placed = new Set<string>();
     let cursorX = 0;
 
+    // Global minimum DB generation — used to align all root trees on the same Y grid.
+    const globalMinGen = people.length > 0 ? Math.min(...people.map(p => p.generation)) : 1;
+
     for (const fam of rootFamilies) {
         const subtree = buildSubtree(fam, personMap, familyMap, visited);
         if (!subtree) continue;
-        assignPositions(subtree, cursorX, 0, allNodes, placed);
+        // Start each root family at the layout row matching its members' DB generation,
+        // so that separate family trees (e.g. multi-clan) share the same Y grid.
+        const fatherGen = fam.fatherHandle ? personMap.get(fam.fatherHandle)?.generation : undefined;
+        const motherGen = fam.motherHandle ? personMap.get(fam.motherHandle)?.generation : undefined;
+        const memberGen = fatherGen ?? motherGen ?? globalMinGen;
+        const startGen = memberGen - globalMinGen;
+        assignPositions(subtree, cursorX, startGen, allNodes, placed);
         cursorX += subtree.width + H_SPACE;
     }
 

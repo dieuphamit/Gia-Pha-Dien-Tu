@@ -53,9 +53,16 @@ export async function insertAuditLog(params: {
 
 // 笏笏 Convert snake_case DB rows to camelCase 笏笏
 
-function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
+function dbRowToTreeNode(row: Record<string, unknown>, clanHandle?: string): TreeNode {
     const birthDate = row.birth_date as string | undefined;
     const deathDate = row.death_date as string | undefined;
+    const clanTocMap = (row.clan_toc_map as Record<string, 'chinh' | 'than' | 'ngoai'>) ?? {};
+    // Use clan-specific toc_type override when viewing a specific clan's tree,
+    // otherwise fall back to the global toc_type computed from the person's primary clan.
+    const effectiveTocType: 'chinh' | 'than' | 'ngoai' =
+        (clanHandle && clanTocMap[clanHandle]) ??
+        (row.toc_type as 'chinh' | 'than' | 'ngoai') ??
+        'ngoai';
     return {
         handle: row.handle as string,
         displayName: row.display_name as string,
@@ -67,12 +74,12 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
         generation: row.generation as number,
         isLiving: row.is_living as boolean,
         isPrivacyFiltered: row.is_privacy_filtered as boolean,
-        tocType: (row.toc_type as 'chinh' | 'than' | 'ngoai') ?? 'ngoai',
+        tocType: effectiveTocType,
         tocOverride: (row.toc_override as boolean) ?? false,
-        clanTocMap: (row.clan_toc_map as Record<string, 'chinh' | 'than' | 'ngoai'>) ?? {},
-        // backward-compat: derived from tocType
-        isPatrilineal: (row.toc_type ?? row.is_patrilineal) === 'chinh' || (row.toc_type == null && row.is_patrilineal === true),
-        isAffiliatedFamily: (row.toc_type ?? '') === 'than' || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
+        clanTocMap,
+        // backward-compat: derived from effectiveTocType (clan-aware)
+        isPatrilineal: effectiveTocType === 'chinh' || (row.toc_type == null && row.is_patrilineal === true),
+        isAffiliatedFamily: effectiveTocType === 'than' || (row.toc_type == null && (row.is_affiliated_family as boolean) === true),
         families: (row.families as string[]) || [],
         parentFamilies: (row.parent_families as string[]) || [],
         avatarUrl: (row.avatar_url as string | null) ?? undefined,
@@ -109,7 +116,7 @@ export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
         console.error('Failed to fetch people:', error.message);
         return [];
     }
-    return (data || []).map(dbRowToTreeNode);
+    return (data || []).map(row => dbRowToTreeNode(row, clanHandle));
 }
 
 /** Fetch all families from Supabase, optionally filtered by clan */
@@ -120,7 +127,7 @@ export async function fetchFamilies(clanHandle?: string): Promise<TreeFamily[]> 
         .order('handle');
 
     if (clanHandle) {
-        query = query.eq('clan_handle', clanHandle);
+        query = query.contains('clan_handles', [clanHandle]);
     }
 
     const { data, error } = await query;
