@@ -59,8 +59,9 @@ function dbRowToTreeNode(row: Record<string, unknown>, clanHandle?: string): Tre
     const clanTocMap = (row.clan_toc_map as Record<string, 'chinh' | 'than' | 'ngoai'>) ?? {};
     // Use clan-specific toc_type override when viewing a specific clan's tree,
     // otherwise fall back to the global toc_type computed from the person's primary clan.
+    const clanOverride = clanHandle ? clanTocMap[clanHandle] : undefined;
     const effectiveTocType: 'chinh' | 'than' | 'ngoai' =
-        (clanHandle && clanTocMap[clanHandle]) ??
+        clanOverride ??
         (row.toc_type as 'chinh' | 'than' | 'ngoai') ??
         'ngoai';
     return {
@@ -94,6 +95,7 @@ function dbRowToTreeFamily(row: Record<string, unknown>): TreeFamily {
         fatherHandle: row.father_handle as string | undefined,
         motherHandle: row.mother_handle as string | undefined,
         children: (row.children as string[]) || [],
+        marriageOrder: (row.marriage_order as number) ?? 1,
     };
 }
 
@@ -123,7 +125,7 @@ export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
 export async function fetchFamilies(clanHandle?: string): Promise<TreeFamily[]> {
     let query = supabase
         .from('families')
-        .select('handle, father_handle, mother_handle, children')
+        .select('handle, father_handle, mother_handle, children, marriage_order')
         .order('handle');
 
     if (clanHandle) {
@@ -162,7 +164,7 @@ export async function fetchTreeData(clanHandle?: string): Promise<{ people: Tree
     // 3. Fetch families by their handles (covers cross-clan families of multi-clan people)
     const { data, error } = await supabase
         .from('families')
-        .select('handle, father_handle, mother_handle, children')
+        .select('handle, father_handle, mother_handle, children, marriage_order')
         .in('handle', Array.from(familyHandles))
         .order('handle');
 
@@ -601,7 +603,7 @@ export async function deletePerson(handle: string, actorId?: string, entityName?
 export async function fetchFamily(handle: string): Promise<TreeFamily | null> {
     const { data, error } = await supabase
         .from('families')
-        .select('handle, father_handle, mother_handle, children')
+        .select('handle, father_handle, mother_handle, children, marriage_order')
         .eq('handle', handle)
         .single();
     if (error || !data) return null;
@@ -782,7 +784,25 @@ export async function addFamily(family: {
     motherHandle?: string;
     children?: string[];
     clanHandle?: string | null;
+    marriageOrder?: number;
 }, actorId?: string): Promise<{ error: string | null }> {
+    // Auto-compute marriage_order if not provided: MAX(existing for this person) + 1
+    let marriageOrder = family.marriageOrder ?? 1;
+    if (!family.marriageOrder) {
+        const personHandle = family.fatherHandle || family.motherHandle;
+        if (personHandle) {
+            const field = family.fatherHandle ? 'father_handle' : 'mother_handle';
+            const { data: existingFamilies } = await supabase
+                .from('families')
+                .select('marriage_order')
+                .eq(field, personHandle);
+            if (existingFamilies && existingFamilies.length > 0) {
+                const maxOrder = Math.max(...existingFamilies.map((f: { marriage_order: number }) => f.marriage_order ?? 1));
+                marriageOrder = maxOrder + 1;
+            }
+        }
+    }
+
     const { error } = await supabase
         .from('families')
         .insert({
@@ -791,6 +811,7 @@ export async function addFamily(family: {
             mother_handle: family.motherHandle || null,
             children: family.children || [],
             clan_handle: family.clanHandle || null,
+            marriage_order: marriageOrder,
         });
 
     if (error) {

@@ -582,12 +582,16 @@ export default function TreeViewPage() {
 
     const visibleHandles = useMemo(() => new Set(visibleNodes.map(n => n.node.handle)), [visibleNodes]);
 
+    // Color palette for multi-spouse family units (index 0 = first marriage, 1 = second, ...)
+    const FAMILY_UNIT_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
+
     // Batched SVG paths for connections
-    const { parentPaths, couplePaths, visibleCouples } = useMemo(() => {
-        if (!layout) return { parentPaths: '', couplePaths: '', visibleCouples: [] as PositionedCouple[] };
+    const { parentPaths, couplePaths, visibleCouples, coloredConnections } = useMemo(() => {
+        if (!layout) return { parentPaths: '', couplePaths: '', visibleCouples: [] as PositionedCouple[], coloredConnections: new Map<number, { pp: string; cp: string }>() };
         let pp = '';
         let cp = '';
         const vc: PositionedCouple[] = [];
+        const coloredConn = new Map<number, { pp: string; cp: string }>();
         // Only render connections where at least one endpoint is visible
         for (const c of layout.connections) {
             // Check if any endpoint is near visible area
@@ -602,7 +606,16 @@ export default function TreeViewPage() {
                 x >= left && x <= right && y >= top && y <= bottom;
             if (!inView(c.fromX, c.fromY) && !inView(c.toX, c.toY)) continue;
 
-            if (c.type === 'couple') {
+            if (c.familyUnitIndex !== undefined) {
+                // Multi-spouse: separate colored path
+                const entry = coloredConn.get(c.familyUnitIndex) ?? { pp: '', cp: '' };
+                if (c.type === 'couple') {
+                    entry.cp += `M${c.fromX},${c.fromY}L${c.toX},${c.toY}`;
+                } else {
+                    entry.pp += `M${c.fromX},${c.fromY}L${c.toX},${c.toY}`;
+                }
+                coloredConn.set(c.familyUnitIndex, entry);
+            } else if (c.type === 'couple') {
                 cp += `M${c.fromX},${c.fromY}L${c.toX},${c.toY}`;
             } else {
                 // Each connection segment is already a single straight line
@@ -616,7 +629,7 @@ export default function TreeViewPage() {
                 vc.push(c);
             }
         }
-        return { parentPaths: pp, couplePaths: cp, visibleCouples: vc };
+        return { parentPaths: pp, couplePaths: cp, visibleCouples: vc, coloredConnections: coloredConn };
     }, [layout, transform, visibleHandles]);
 
     // Stable callbacks for PersonCard
@@ -940,11 +953,21 @@ export default function TreeViewPage() {
                             transformOrigin: '0 0', width: layout.width, height: layout.height,
                             position: 'absolute', top: 0, left: 0,
                         }}>
-                            {/* SVG connections — batched into 2 paths */}
+                            {/* SVG connections — batched paths + colored multi-spouse paths */}
                             <svg className="absolute inset-0 pointer-events-none" width={layout.width} height={layout.height}
                                 style={{ overflow: 'visible' }}>
                                 {parentPaths && <path d={parentPaths} stroke="#94a3b8" strokeWidth={1.5} fill="none" />}
                                 {couplePaths && <path d={couplePaths} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeDasharray="4,3" />}
+                                {/* Multi-spouse colored connections */}
+                                {Array.from(coloredConnections.entries()).map(([idx, paths]) => {
+                                    const color = FAMILY_UNIT_COLORS[idx % FAMILY_UNIT_COLORS.length];
+                                    return (
+                                        <g key={idx}>
+                                            {paths.pp && <path d={paths.pp} stroke={color} strokeWidth={2} fill="none" />}
+                                            {paths.cp && <path d={paths.cp} stroke={color} strokeWidth={2} fill="none" strokeDasharray="4,3" />}
+                                        </g>
+                                    );
+                                })}
                                 {/* Couple hearts — only visible */}
                                 {visibleCouples.map(c => (
                                     <text key={c.familyHandle}

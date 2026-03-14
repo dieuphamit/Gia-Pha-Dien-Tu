@@ -53,13 +53,13 @@ export const MOCK_PEOPLE: TreeNode[] = RAW_MOCK_PEOPLE.map(p => ({
 } as TreeNode));
 
 export const MOCK_FAMILIES: TreeFamily[] = [
-    { handle: 'F001', fatherHandle: 'P001',                         children: ['P002'] },
-    { handle: 'F002', fatherHandle: 'P002', motherHandle: 'P014',   children: ['P005', 'P006', 'P028', 'P029', 'P009', 'P010', 'P011', 'P030'] },
-    { handle: 'F005', fatherHandle: 'P005', motherHandle: 'P015',   children: ['P013'] },
-    { handle: 'F006', fatherHandle: 'P011', motherHandle: 'P016',   children: ['P017'] },
-    { handle: 'F007', fatherHandle: 'P018', motherHandle: 'P006',   children: ['P019', 'P020', 'P021', 'P024', 'P027'] },
-    { handle: 'F008', fatherHandle: 'P026', motherHandle: 'P021',   children: ['P022', 'P023'] },
-    { handle: 'F009', fatherHandle: 'P025', motherHandle: 'P020',   children: [] },
+    { handle: 'F001', fatherHandle: 'P001',                         children: ['P002'], marriageOrder: 1 },
+    { handle: 'F002', fatherHandle: 'P002', motherHandle: 'P014',   children: ['P005', 'P006', 'P028', 'P029', 'P009', 'P010', 'P011', 'P030'], marriageOrder: 1 },
+    { handle: 'F005', fatherHandle: 'P005', motherHandle: 'P015',   children: ['P013'], marriageOrder: 1 },
+    { handle: 'F006', fatherHandle: 'P011', motherHandle: 'P016',   children: ['P017'], marriageOrder: 1 },
+    { handle: 'F007', fatherHandle: 'P018', motherHandle: 'P006',   children: ['P019', 'P020', 'P021', 'P024', 'P027'], marriageOrder: 1 },
+    { handle: 'F008', fatherHandle: 'P026', motherHandle: 'P021',   children: ['P022', 'P023'], marriageOrder: 1 },
+    { handle: 'F009', fatherHandle: 'P025', motherHandle: 'P020',   children: [], marriageOrder: 1 },
 ];
 
 export function getMockTreeData() {

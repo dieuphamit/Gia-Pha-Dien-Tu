@@ -41,6 +41,7 @@ export interface TreeFamily {
     fatherHandle?: string;
     motherHandle?: string;
     children: string[];
+    marriageOrder: number;
 }
 
 export interface PositionedNode {
@@ -56,6 +57,7 @@ export interface PositionedCouple {
     motherPos?: PositionedNode;
     midX: number;
     y: number;
+    familyUnitIndex?: number;
 }
 
 export interface Connection {
@@ -64,6 +66,7 @@ export interface Connection {
     toX: number;
     toY: number;
     type: 'parent-child' | 'couple';
+    familyUnitIndex?: number;
 }
 
 export interface LayoutResult {
@@ -433,6 +436,207 @@ function assignPositions(
     }
 }
 
+// ═══ Multi-spouse helpers ═══
+
+/** Extract ChildItem[] for a family without placing the couple itself */
+function buildChildItems(
+    family: TreeFamily,
+    personMap: Map<string, TreeNode>,
+    familyMap: Map<string, TreeFamily>,
+    visited: Set<string>,
+): ChildItem[] {
+    const children: ChildItem[] = [];
+    for (const childHandle of family.children) {
+        const child = personMap.get(childHandle);
+        if (!child) continue;
+
+        const candidateFamilies = Array.from(familyMap.values()).filter(f =>
+            !visited.has(f.handle) &&
+            (f.fatherHandle === childHandle || f.motherHandle === childHandle)
+        );
+        const childFamily = candidateFamilies.find(f => f.fatherHandle && f.motherHandle)
+            ?? candidateFamilies[0];
+
+        if (childFamily) {
+            const spouseHandle = childFamily.fatherHandle === childHandle
+                ? childFamily.motherHandle
+                : childFamily.fatherHandle;
+            const spouseNode = spouseHandle ? personMap.get(spouseHandle) : undefined;
+            if (spouseNode?.parentFamilies.some(pfId => familyMap.has(pfId) && !visited.has(pfId))) {
+                continue;
+            }
+        }
+
+        if (childFamily) {
+            const sub = buildSubtree(childFamily, personMap, familyMap, visited);
+            if (sub) {
+                children.push({ subtree: sub, width: sub.width, anchorX: sub.anchorX, contour: sub.contour });
+            } else {
+                const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
+                children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
+            }
+        } else {
+            const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
+            children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
+        }
+    }
+    return children;
+}
+
+/** Compute total packed span of ChildItem[] using contour-based packing */
+function computeChildrenSpan(items: ChildItem[]): number {
+    if (items.length === 0) return 0;
+    if (items.length === 1) return items[0].width;
+    let totalOffset = 0;
+    let merged: Contour = { left: [...items[0].contour.left], right: [...items[0].contour.right] };
+    for (let i = 1; i < items.length; i++) {
+        totalOffset = minSeparation(merged, items[i].contour);
+        merged = mergeContours(merged, items[i].contour, totalOffset);
+    }
+    return totalOffset + items[items.length - 1].width;
+}
+
+/** Place ChildItem[] so their midpoint anchor is at centerX, at the given generation row */
+function assignChildItems(
+    items: ChildItem[],
+    centerX: number,
+    generation: number,
+    allNodes: PositionedNode[],
+    placed: Set<string>,
+): void {
+    if (items.length === 0) return;
+    const y = generation * (CARD_H + V_SPACE);
+
+    if (items.length === 1) {
+        const item = items[0];
+        const childStartX = centerX - item.anchorX;
+        if (item.subtree) {
+            assignPositions(item.subtree, childStartX, generation, allNodes, placed);
+        } else if (item.leaf && !placed.has(item.leaf.handle)) {
+            allNodes.push({ node: item.leaf, x: childStartX, y, generation });
+            placed.add(item.leaf.handle);
+        }
+        return;
+    }
+
+    // N children: contour-based packing, centered at centerX
+    const offsets: number[] = [0];
+    let merged: Contour = { left: [...items[0].contour.left], right: [...items[0].contour.right] };
+    for (let i = 1; i < items.length; i++) {
+        const sep = minSeparation(merged, items[i].contour);
+        offsets.push(sep);
+        merged = mergeContours(merged, items[i].contour, sep);
+    }
+    const midpoint = (offsets[0] + offsets[offsets.length - 1]) / 2;
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const childAnchorX = centerX - midpoint + offsets[i];
+        const childStartX = childAnchorX - item.anchorX;
+        if (item.subtree) {
+            assignPositions(item.subtree, childStartX, generation, allNodes, placed);
+        } else if (item.leaf && !placed.has(item.leaf.handle)) {
+            allNodes.push({ node: item.leaf, x: childStartX, y, generation });
+            placed.add(item.leaf.handle);
+        }
+    }
+}
+
+/**
+ * Assign positions for a multi-spouse group.
+ *
+ * Layout (sorted by marriage_order):
+ *   [F1_ch_span ][W1][COUPLE_GAP][P][COUPLE_GAP][W2][F2_ch_span][H_SPACE][W3]...
+ *
+ * F1 children centered at midpoint(W1, P).
+ * F2 children centered at midpoint(P, W2).
+ * F3+ children centered at Wi center.
+ *
+ * Returns total width consumed.
+ */
+function assignMultiSpouseGroup(
+    patrilineal: TreeNode,
+    families: TreeFamily[],
+    personMap: Map<string, TreeNode>,
+    familyMap: Map<string, TreeFamily>,
+    visited: Set<string>,
+    startX: number,
+    startGeneration: number,
+    allNodes: PositionedNode[],
+    placed: Set<string>,
+): number {
+    // Mark all group families visited before building child items
+    for (const fam of families) visited.add(fam.handle);
+
+    const y = startGeneration * (CARD_H + V_SPACE);
+
+    const familyData = families.map((fam, idx) => {
+        const spouseHandle = fam.fatherHandle === patrilineal.handle
+            ? fam.motherHandle
+            : fam.fatherHandle;
+        const spouse = spouseHandle ? personMap.get(spouseHandle) : undefined;
+        const childItems = buildChildItems(fam, personMap, familyMap, visited);
+        const childrenSpan = computeChildrenSpan(childItems);
+        return { fam, spouse, childItems, childrenSpan, familyUnitIndex: idx };
+    });
+
+    // Left wing: distance from startX to P's left edge (includes W1 + her children span)
+    // F1 children are centered at midpoint(W1, P) = P_cx - (CARD_W + COUPLE_GAP)/2
+    // Left extent of F1 children = that midpoint - ch_span/2
+    // Minimum left wing = (CARD_W + COUPLE_GAP + ch_span[0]) / 2
+    const leftChildSpan = familyData[0].childrenSpan;
+    const leftWing = Math.max(
+        CARD_W + COUPLE_GAP,
+        Math.ceil((CARD_W + COUPLE_GAP + leftChildSpan) / 2),
+    );
+
+    const P_cx = startX + leftWing + CARD_W / 2;
+
+    // Place P
+    if (!placed.has(patrilineal.handle)) {
+        allNodes.push({ node: patrilineal, x: P_cx - CARD_W / 2, y, generation: startGeneration });
+        placed.add(patrilineal.handle);
+    }
+
+    // Place W1 (left of P)
+    const W1_cx = P_cx - CARD_W - COUPLE_GAP;
+    if (familyData[0].spouse && !placed.has(familyData[0].spouse.handle)) {
+        allNodes.push({ node: familyData[0].spouse, x: W1_cx - CARD_W / 2, y, generation: startGeneration });
+        placed.add(familyData[0].spouse.handle);
+    }
+
+    // F1 children centered at midpoint(W1, P)
+    if (familyData[0].childItems.length > 0) {
+        assignChildItems(familyData[0].childItems, (W1_cx + P_cx) / 2, startGeneration + 1, allNodes, placed);
+    }
+
+    // Place right wives (W2, W3, ...) and their children
+    let rightCursor = P_cx + CARD_W / 2 + COUPLE_GAP; // left edge of next wife card
+    let rightTotal = 0;
+
+    for (let i = 1; i < familyData.length; i++) {
+        const fd = familyData[i];
+        const Wi_cx = rightCursor + CARD_W / 2;
+        const wingWidth = Math.max(CARD_W, fd.childrenSpan);
+
+        if (fd.spouse && !placed.has(fd.spouse.handle)) {
+            allNodes.push({ node: fd.spouse, x: rightCursor, y, generation: startGeneration });
+            placed.add(fd.spouse.handle);
+        }
+
+        if (fd.childItems.length > 0) {
+            const childCenter = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            assignChildItems(fd.childItems, childCenter, startGeneration + 1, allNodes, placed);
+        }
+
+        const usedWidth = COUPLE_GAP + wingWidth;
+        rightTotal += usedWidth;
+        rightCursor += wingWidth + H_SPACE;
+    }
+
+    return leftWing + CARD_W + rightTotal;
+}
+
 // ═══ Main layout ═══
 
 export function computeLayout(people: TreeNode[], families: TreeFamily[]): LayoutResult {
@@ -469,17 +673,56 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
     // Global minimum DB generation — used to align all root trees on the same Y grid.
     const globalMinGen = people.length > 0 ? Math.min(...people.map(p => p.generation)) : 1;
 
+    // Detect multi-spouse groups: root families that share the same patrilineal person.
+    const patrilinealFamilyGroups = new Map<string, TreeFamily[]>();
     for (const fam of rootFamilies) {
-        const subtree = buildSubtree(fam, personMap, familyMap, visited);
-        if (!subtree) continue;
-        // Start each root family at the layout row matching its members' DB generation,
-        // so that separate family trees (e.g. multi-clan) share the same Y grid.
-        const fatherGen = fam.fatherHandle ? personMap.get(fam.fatherHandle)?.generation : undefined;
-        const motherGen = fam.motherHandle ? personMap.get(fam.motherHandle)?.generation : undefined;
-        const memberGen = fatherGen ?? motherGen ?? globalMinGen;
-        const startGen = memberGen - globalMinGen;
-        assignPositions(subtree, cursorX, startGen, allNodes, placed);
-        cursorX += subtree.width + H_SPACE;
+        const father = fam.fatherHandle ? personMap.get(fam.fatherHandle) : undefined;
+        const mother = fam.motherHandle ? personMap.get(fam.motherHandle) : undefined;
+        const pat = father?.isPatrilineal ? father : mother?.isPatrilineal ? mother : (father || mother);
+        if (!pat) continue;
+        const existing = patrilinealFamilyGroups.get(pat.handle) ?? [];
+        existing.push(fam);
+        patrilinealFamilyGroups.set(pat.handle, existing);
+    }
+    // Sort each group by marriageOrder
+    for (const fams of patrilinealFamilyGroups.values()) {
+        fams.sort((a, b) => a.marriageOrder - b.marriageOrder);
+    }
+    // Set of family handles that belong to a multi-spouse group
+    const multiSpouseFamilies = new Set<string>();
+    for (const fams of patrilinealFamilyGroups.values()) {
+        if (fams.length > 1) fams.forEach(f => multiSpouseFamilies.add(f.handle));
+    }
+
+    const processedPatrilineal = new Set<string>();
+
+    for (const fam of rootFamilies) {
+        if (multiSpouseFamilies.has(fam.handle)) {
+            const father = fam.fatherHandle ? personMap.get(fam.fatherHandle) : undefined;
+            const mother = fam.motherHandle ? personMap.get(fam.motherHandle) : undefined;
+            const pat = father?.isPatrilineal ? father : mother?.isPatrilineal ? mother : (father || mother);
+            if (!pat || processedPatrilineal.has(pat.handle)) continue;
+            processedPatrilineal.add(pat.handle);
+
+            const groupFamilies = patrilinealFamilyGroups.get(pat.handle)!;
+            const startGen = pat.generation - globalMinGen;
+            const groupWidth = assignMultiSpouseGroup(
+                pat, groupFamilies, personMap, familyMap,
+                visited, cursorX, startGen, allNodes, placed,
+            );
+            cursorX += groupWidth + H_SPACE;
+        } else {
+            const subtree = buildSubtree(fam, personMap, familyMap, visited);
+            if (!subtree) continue;
+            // Start each root family at the layout row matching its members' DB generation,
+            // so that separate family trees (e.g. multi-clan) share the same Y grid.
+            const fatherGen = fam.fatherHandle ? personMap.get(fam.fatherHandle)?.generation : undefined;
+            const motherGen = fam.motherHandle ? personMap.get(fam.motherHandle)?.generation : undefined;
+            const memberGen = fatherGen ?? motherGen ?? globalMinGen;
+            const startGen = memberGen - globalMinGen;
+            assignPositions(subtree, cursorX, startGen, allNodes, placed);
+            cursorX += subtree.width + H_SPACE;
+        }
     }
 
     // Place orphans (people not in any family tree)
@@ -513,12 +756,24 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
     const connections: Connection[] = [];
     const couples: PositionedCouple[] = [];
 
+    // Build familyUnitIndex map for multi-spouse color coding
+    const familyUnitIndexMap = new Map<string, number>();
+    for (const p of people) {
+        if (p.families.length <= 1) continue;
+        const sortedFams = p.families
+            .map(h => familyMap.get(h))
+            .filter((f): f is TreeFamily => !!f)
+            .sort((a, b) => a.marriageOrder - b.marriageOrder);
+        sortedFams.forEach((f, idx) => familyUnitIndexMap.set(f.handle, idx));
+    }
+
     for (const fam of families) {
         const fatherNode = fam.fatherHandle ? nodeMap.get(fam.fatherHandle) : undefined;
         const motherNode = fam.motherHandle ? nodeMap.get(fam.motherHandle) : undefined;
         if (!fatherNode && !motherNode) continue;
 
         const patriNode = (fatherNode?.node.isPatrilineal ? fatherNode : motherNode) ?? fatherNode;
+        const familyUnitIdx = familyUnitIndexMap.get(fam.handle);
 
         // Couple line (horizontal between cards)
         if (fatherNode && motherNode) {
@@ -528,12 +783,14 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                 fromX: left.x + CARD_W, fromY: left.y + CARD_H / 2,
                 toX: right.x, toY: right.y + CARD_H / 2,
                 type: 'couple',
+                familyUnitIndex: familyUnitIdx,
             });
             couples.push({
                 familyHandle: fam.handle,
                 fatherPos: fatherNode, motherPos: motherNode,
                 midX: (left.x + CARD_W + right.x) / 2,
                 y: left.y,
+                familyUnitIndex: familyUnitIdx,
             });
         }
 
@@ -560,6 +817,7 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                         fromX: parentCX, fromY: parentBottomY,
                         toX: parentCX, toY: childTopY,
                         type: 'parent-child',
+                        familyUnitIndex: familyUnitIdx,
                     });
                 } else {
                     // L-shape: vertical → horizontal → vertical
@@ -567,16 +825,19 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                         fromX: parentCX, fromY: parentBottomY,
                         toX: parentCX, toY: busY,
                         type: 'parent-child',
+                        familyUnitIndex: familyUnitIdx,
                     });
                     connections.push({
                         fromX: parentCX, fromY: busY,
                         toX: childCX, toY: busY,
                         type: 'parent-child',
+                        familyUnitIndex: familyUnitIdx,
                     });
                     connections.push({
                         fromX: childCX, fromY: busY,
                         toX: childCX, toY: childTopY,
                         type: 'parent-child',
+                        familyUnitIndex: familyUnitIdx,
                     });
                 }
             } else {
@@ -588,6 +849,7 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                     fromX: parentCX, fromY: parentBottomY,
                     toX: parentCX, toY: busY,
                     type: 'parent-child',
+                    familyUnitIndex: familyUnitIdx,
                 });
 
                 // 2. Horizontal bus spanning all children
@@ -601,6 +863,7 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                     fromX: busLeft, fromY: busY,
                     toX: busRight, toY: busY,
                     type: 'parent-child',
+                    familyUnitIndex: familyUnitIdx,
                 });
 
                 // 3. Vertical drops from bus to each child
@@ -610,6 +873,7 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                         fromX: cx, fromY: busY,
                         toX: cx, toY: childTopY,
                         type: 'parent-child',
+                        familyUnitIndex: familyUnitIdx,
                     });
                 }
             }

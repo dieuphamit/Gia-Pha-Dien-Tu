@@ -17,6 +17,7 @@ import { formatDateVN } from '@/components/ui/date-input';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 import { ContributeEditPersonDialog } from '@/components/contribute-edit-person-dialog';
+import { ReorderChildrenDialog } from '@/components/reorder-children-dialog';
 import { PersonAvatar } from '@/components/person-avatar';
 import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
 import { useAuth } from '@/components/auth-provider';
@@ -85,6 +86,7 @@ export default function PersonProfilePage() {
     const [selectedSpouseHandle, setSelectedSpouseHandle] = useState<string>('');
     const [familyChildrenMap, setFamilyChildrenMap] = useState<Map<string, string[]>>(new Map());
     const [personNameMap, setPersonNameMap] = useState<Map<string, string>>(new Map());
+    const [familyOrderMap, setFamilyOrderMap] = useState<Map<string, number>>(new Map());
 
     // Editor can only edit people whose clan_handles overlap with their accessible clans
     const canEditThisPerson = isAdmin || (canEdit && (
@@ -122,6 +124,7 @@ export default function PersonProfilePage() {
     });
     const [availableClans, setAvailableClans] = useState<Array<{ handle: string; displayName: string }>>([]);
     const [personClanHandle, setPersonClanHandle] = useState<string[]>(['pham']);
+    const [reorderOpen, setReorderOpen] = useState(false);
 
     const fetchPerson = async () => {
         try {
@@ -178,7 +181,7 @@ export default function PersonProfilePage() {
     const loadFamilyInfo = async () => {
         const { supabase } = await import('@/lib/supabase');
         const [{ data: fams }, { data: people }] = await Promise.all([
-            supabase.from('families').select('handle, father_handle, mother_handle, children').order('handle'),
+            supabase.from('families').select('handle, father_handle, mother_handle, children, marriage_order').order('handle'),
             supabase.from('people').select('handle, display_name'),
         ]);
         if (!fams || !people) return;
@@ -186,15 +189,18 @@ export default function PersonProfilePage() {
         setPersonNameMap(nameMap);
         const infoMap = new Map<string, string>();
         const childrenMap = new Map<string, string[]>();
+        const orderMap = new Map<string, number>();
         fams.forEach(f => {
             const parts: string[] = [];
             if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
             if (f.mother_handle) parts.push(nameMap.get(f.mother_handle) || f.mother_handle);
             infoMap.set(f.handle, parts.length > 0 ? parts.join(' & ') : f.handle);
             childrenMap.set(f.handle, (f.children as string[]) || []);
+            orderMap.set(f.handle, (f.marriage_order as number) ?? 1);
         });
         setFamilyInfoMap(infoMap);
         setFamilyChildrenMap(childrenMap);
+        setFamilyOrderMap(orderMap);
     };
 
     const fetchMedia = useCallback(async () => {
@@ -645,6 +651,11 @@ export default function PersonProfilePage() {
 
                 {/* Edit / propose buttons */}
                 <div className="flex items-center gap-2">
+                    {isAdmin && !editing && person.families && person.families.length > 0 && (
+                        <Button variant="outline" size="sm" onClick={() => setReorderOpen(true)}>
+                            Sắp xếp con cái
+                        </Button>
+                    )}
                     {canEditThisPerson && !editing && (
                         <>
                             <Button variant="outline" size="sm" onClick={startEdit}>
@@ -1043,12 +1054,27 @@ export default function PersonProfilePage() {
                                         <span className="text-xs text-muted-foreground">Chưa có</span>
                                     ) : (
                                         <div className="flex flex-col gap-2">
-                                            {(person?.families || []).map(fh => {
+                                            {(person?.families || [])
+                                                .slice()
+                                                .sort((a, b) => (familyOrderMap.get(a) ?? 1) - (familyOrderMap.get(b) ?? 1))
+                                                .map(fh => {
                                                 const children = familyChildrenMap.get(fh) || [];
+                                                const order = familyOrderMap.get(fh) ?? 1;
+                                                const spouseLabel = person.gender === 2
+                                                    ? (order === 1 ? 'Chồng cả' : `Chồng ${order === 2 ? 'hai' : order === 3 ? 'ba' : `thứ ${order}`}`)
+                                                    : (order === 1 ? 'Vợ cả' : `Vợ ${order === 2 ? 'hai' : order === 3 ? 'ba' : `thứ ${order}`}`);
+                                                const hasMultiple = (person?.families || []).length > 1;
                                                 return (
                                                     <div key={fh} className="rounded-lg border px-3 py-2 text-xs">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="font-medium">{familyInfoMap.get(fh) || fh}</span>
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                {hasMultiple && (
+                                                                    <span className="shrink-0 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">
+                                                                        {spouseLabel}
+                                                                    </span>
+                                                                )}
+                                                                <span className="font-medium truncate">{familyInfoMap.get(fh) || fh}</span>
+                                                            </div>
                                                             <button
                                                                 type="button"
                                                                 className="text-muted-foreground hover:text-destructive shrink-0"
@@ -1472,6 +1498,15 @@ export default function PersonProfilePage() {
                         </Card>
                     </TabsContent>
                 </Tabs>
+            )}
+
+            {isAdmin && person.families && person.families.length > 0 && (
+                <ReorderChildrenDialog
+                    open={reorderOpen}
+                    onClose={() => setReorderOpen(false)}
+                    personHandle={person.handle}
+                    familyHandles={person.families}
+                />
             )}
         </div>
     );
