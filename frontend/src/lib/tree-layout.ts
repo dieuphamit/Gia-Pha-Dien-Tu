@@ -545,6 +545,28 @@ function computeChildrenSpan(items: ChildItem[]): number {
 }
 
 /**
+ * Compute the maximum right extent of placed children, measured from the children's center.
+ * Mirror of the assignChildItems placement logic, but returns max right offset instead of placing.
+ */
+function childrenRightFromCenter(items: ChildItem[]): number {
+    if (items.length === 0) return 0;
+    if (items.length === 1) return items[0].width - items[0].anchorX;
+    const offsets: number[] = [0];
+    let merged: Contour = { left: [...items[0].contour.left], right: [...items[0].contour.right] };
+    for (let i = 1; i < items.length; i++) {
+        const sep = minSeparation(merged, items[i].contour);
+        offsets.push(sep);
+        merged = mergeContours(merged, items[i].contour, sep);
+    }
+    const midpoint = (offsets[0] + offsets[offsets.length - 1]) / 2;
+    let maxRight = -Infinity;
+    for (let i = 0; i < items.length; i++) {
+        maxRight = Math.max(maxRight, offsets[i] - items[i].anchorX + items[i].width - midpoint);
+    }
+    return maxRight;
+}
+
+/**
  * Build a ChildItem representing a multi-spouse group (patrilineal person with N wives/husbands).
  * Marks all families + their descendants visited, computes total width/anchorX/contour once.
  */
@@ -577,7 +599,36 @@ function buildMultiSpouseChildItem(
         rightTotal += COUPLE_GAP + wingWidth;
     }
 
-    const width = leftWing + CARD_W + rightTotal;
+    // Simulate clearChildRow shifts to find the true right extent at the children row.
+    // placeMultiSpouseGroup may push right-wife children further right than the nominal wingWidth,
+    // so the actual block width can exceed leftWing + CARD_W + rightTotal.
+    const P_cx_rel = leftWing + CARD_W / 2;
+    const W1_cx_rel = P_cx_rel - CARD_W - COUPLE_GAP;
+    const F1_center_rel = (W1_cx_rel + P_cx_rel) / 2;
+    let childRowRight_rel = familyData[0].childItems.length > 0
+        ? F1_center_rel + childrenRightFromCenter(familyData[0].childItems)
+        : -Infinity;
+    let blockRight_rel = P_cx_rel + CARD_W / 2; // at minimum: P's right edge
+    let rcsr = P_cx_rel + CARD_W / 2 + COUPLE_GAP;
+    for (let i = 1; i < familyData.length; i++) {
+        const fd = familyData[i];
+        const Wi_cx_rel = rcsr + CARD_W / 2;
+        blockRight_rel = Math.max(blockRight_rel, Wi_cx_rel + CARD_W / 2);
+        if (fd.childItems.length > 0) {
+            const span = fd.childrenSpan;
+            const ideal = i === 1 ? (P_cx_rel + Wi_cx_rel) / 2 : Wi_cx_rel;
+            const actualCenter = childRowRight_rel !== -Infinity
+                ? Math.max(ideal, childRowRight_rel + H_SPACE + span / 2)
+                : ideal;
+            const right = actualCenter + childrenRightFromCenter(fd.childItems);
+            blockRight_rel = Math.max(blockRight_rel, right);
+            childRowRight_rel = Math.max(childRowRight_rel, right);
+        }
+        const wingWidth = Math.max(CARD_W, fd.childrenSpan);
+        rcsr += wingWidth + H_SPACE;
+    }
+
+    const width = Math.max(leftWing + CARD_W + rightTotal, blockRight_rel);
     const anchorX = leftWing + CARD_W / 2;
     // Bounding-box contour (two levels: parent row + children row)
     const contour: Contour = {
@@ -780,7 +831,13 @@ function assignMultiSpouseGroup(
         rightCursor += wingWidth + H_SPACE;
     }
 
-    return leftWing + CARD_W + rightTotal;
+    // clearChildRow may push right-wife children further right than rightCursor.
+    // Scan nodes placed by this group (all nodes to the right of startX) to get true width.
+    let actualRight = startX + leftWing + CARD_W + rightTotal;
+    for (const n of allNodes) {
+        if (n.x >= startX) actualRight = Math.max(actualRight, n.x + CARD_W);
+    }
+    return actualRight - startX;
 }
 
 // ═══ Main layout ═══
