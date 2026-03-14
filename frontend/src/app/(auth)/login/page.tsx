@@ -77,7 +77,7 @@ export default function LoginPage() {
                         <TreePine className="h-8 w-8 text-primary" />
                     </div>
                 </div>
-                <CardTitle className="text-2xl font-bold">Gia phả họ Phạm</CardTitle>
+                <CardTitle className="text-2xl font-bold">Gia phả dòng họ</CardTitle>
                 <CardDescription>
                     {mode === 'login'
                         ? 'Đăng nhập để quản lý & đóng góp thông tin'

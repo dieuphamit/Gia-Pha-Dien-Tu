@@ -35,7 +35,7 @@ export function Header() {
             {/* Left side */}
             <div className="flex items-center gap-2">
                 <h2 className="text-sm font-medium text-muted-foreground">
-                    Dòng họ Phạm
+                    Gia phả dòng họ
                 </h2>
             </div>
 

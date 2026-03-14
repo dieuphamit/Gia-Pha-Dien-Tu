@@ -36,7 +36,7 @@ export default function WelcomePage() {
                     </div>
                 </div>
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Gia phả họ Phạm</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Gia phả dòng họ</h1>
                     <p className="text-muted-foreground mt-1">Kết nối - Lưu giữ - Truyền thừa</p>
                 </div>
             </div>
@@ -46,7 +46,7 @@ export default function WelcomePage() {
                 <CardHeader className="text-center pb-2">
                     <CardTitle className="text-xl">Chào mừng đến với Gia phả Điện tử</CardTitle>
                     <CardDescription className="text-base leading-relaxed">
-                        Nền tảng số giúp dòng họ Phạm ghi chép, lưu giữ và kết nối các thế hệ
+                        Nền tảng số giúp dòng họ ghi chép, lưu giữ và kết nối các thế hệ
                         qua nhiều đời. Mọi thông tin được bảo mật, chỉ dành cho thành viên trong gia tộc.
                     </CardDescription>
                 </CardHeader>
@@ -87,7 +87,7 @@ export default function WelcomePage() {
                     </div>
 
                     <p className="text-center text-xs text-muted-foreground">
-                        Đăng ký tài khoản để truy cập gia phả họ Phạm.
+                        Đăng ký tài khoản để truy cập gia phả dòng họ.
                     </p>
                 </CardContent>
             </Card>

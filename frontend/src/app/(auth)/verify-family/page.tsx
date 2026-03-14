@@ -101,7 +101,7 @@ export default function VerifyFamilyPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold">Xác minh thành viên gia tộc</CardTitle>
                 <CardDescription>
-                    Vui lòng trả lời đúng các câu hỏi về gia đình để xác nhận bạn là thành viên dòng họ Phạm.
+                    Vui lòng trả lời đúng các câu hỏi về gia đình để xác nhận bạn là thành viên dòng họ.
                 </CardDescription>
             </CardHeader>
             <CardContent>
