@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus, Clock, UserCog } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus, Clock, UserCog, Search, ChevronDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -32,7 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { AddMemberDialog } from '@/components/add-member-dialog';
-import { insertAuditLog, updateProfilePersonHandle, updateEditablePersonHandles } from '@/lib/supabase-data';
+import { insertAuditLog, updateProfilePersonHandle, updateEditablePersonHandles, fetchPeopleForSelect, fetchClans } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 type ClanFilter = 'all' | 'pham' | 'huynh' | 'dinh';
@@ -55,6 +55,141 @@ const ROLE_LABELS: Record<string, string> = {
     editor: 'Editor',
     member: 'Thành viên',
 };
+
+interface PersonForSelect {
+    handle: string;
+    displayName: string;
+    generation: number;
+    gender: number;
+}
+
+/** Searchable combobox to select a person from the family tree */
+function PersonPicker({
+    people,
+    value,
+    onChange,
+    placeholder = 'Chọn người...',
+    clanFilter,
+    onClanFilterChange,
+    clans,
+}: {
+    people: PersonForSelect[];
+    value: string;
+    onChange: (handle: string) => void;
+    placeholder?: string;
+    clanFilter: string;
+    onClanFilterChange: (clan: string) => Promise<void>;
+    clans: Array<{ handle: string; displayName: string }>;
+}) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    const selectedPerson = people.find(p => p.handle === value);
+
+    const filtered = people.filter(p => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+            p.displayName.toLowerCase().includes(q) ||
+            p.handle.toLowerCase().includes(q)
+        );
+    });
+
+    React.useEffect(() => {
+        function handleClick(e: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        }
+        if (open) document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [open]);
+
+    return (
+        <div ref={containerRef} className="space-y-1.5">
+            {clans.length > 1 && (
+                <div className="flex gap-1 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => onClanFilterChange('')}
+                        className={`rounded-full px-2.5 py-0.5 text-xs border transition-colors ${!clanFilter ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
+                    >
+                        All
+                    </button>
+                    {clans.map(cl => (
+                        <button
+                            key={cl.handle}
+                            type="button"
+                            onClick={() => onClanFilterChange(cl.handle)}
+                            className={`rounded-full px-2.5 py-0.5 text-xs border transition-colors ${clanFilter === cl.handle ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
+                        >
+                            {cl.displayName}
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div
+                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm cursor-pointer bg-background hover:bg-muted/50 min-h-[38px]"
+                onClick={() => setOpen(v => !v)}
+            >
+                {selectedPerson ? (
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="font-mono text-xs text-muted-foreground shrink-0">{selectedPerson.handle}</span>
+                        <span className="truncate">{selectedPerson.displayName}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">({selectedPerson.generation})</span>
+                    </div>
+                ) : (
+                    <span className="text-muted-foreground">{placeholder}</span>
+                )}
+                <div className="flex items-center gap-1 ml-2 shrink-0">
+                    {value && (
+                        <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); onChange(''); setSearch(''); }}
+                            className="text-muted-foreground hover:text-destructive"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </div>
+            </div>
+            {open && (
+                <div className="relative z-50">
+                    <div className="absolute top-0 left-0 right-0 rounded-md border bg-popover shadow-md">
+                        <div className="flex items-center gap-2 border-b px-3 py-2">
+                            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <input
+                                autoFocus
+                                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                                placeholder="Search name or code..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                        </div>
+                        <div className="max-h-52 overflow-y-auto py-1">
+                            {filtered.length === 0 ? (
+                                <p className="text-center text-xs text-muted-foreground py-4">Not found</p>
+                            ) : filtered.map(p => (
+                                <button
+                                    key={p.handle}
+                                    type="button"
+                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted text-left ${p.handle === value ? 'bg-muted font-medium' : ''}`}
+                                    onClick={() => { onChange(p.handle); setOpen(false); setSearch(''); }}
+                                >
+                                    <span className="font-mono text-xs text-muted-foreground w-10 shrink-0">{p.handle}</span>
+                                    <span className="flex-1 truncate">{p.displayName}</span>
+                                    <span className="text-xs text-muted-foreground shrink-0">Gen {p.generation}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface ProfileUser {
     id: string;
@@ -262,9 +397,12 @@ export default function AdminUsersPage() {
     const [permDialogOpen, setPermDialogOpen] = useState(false);
     const [permPersonHandle, setPermPersonHandle] = useState('');
     const [permEditableHandles, setPermEditableHandles] = useState<string[]>([]);
-    const [permNewHandle, setPermNewHandle] = useState('');
     const [permSaving, setPermSaving] = useState(false);
     const [permError, setPermError] = useState<string | null>(null);
+    const [permPeople, setPermPeople] = useState<PersonForSelect[]>([]);
+    const [permClans, setPermClans] = useState<Array<{ handle: string; displayName: string }>>([]);
+    const [permClanFilter, setPermClanFilter] = useState('');
+    const [permPeopleLoading, setPermPeopleLoading] = useState(false);
 
     const openClanDialog = useCallback((user: ProfileUser) => {
         setClanDialogUser(user);
@@ -286,13 +424,18 @@ export default function AdminUsersPage() {
         }
     }, [clanDialogUser, pendingClanAccess]);
 
-    const openPermDialog = useCallback((user: ProfileUser) => {
+    const openPermDialog = useCallback(async (user: ProfileUser) => {
         setPermDialogUser(user);
         setPermPersonHandle(user.person_handle ?? '');
         setPermEditableHandles(user.editable_person_handles ?? []);
-        setPermNewHandle('');
         setPermError(null);
+        setPermClanFilter('');
         setPermDialogOpen(true);
+        setPermPeopleLoading(true);
+        const [people, clans] = await Promise.all([fetchPeopleForSelect(), fetchClans()]);
+        setPermPeople(people);
+        setPermClans(clans);
+        setPermPeopleLoading(false);
     }, []);
 
     const handleSavePermissions = useCallback(async () => {
@@ -817,62 +960,28 @@ export default function AdminUsersPage() {
                         {/* Identity handle */}
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium">Hồ sơ cá nhân (danh tính)</label>
-                            <p className="text-xs text-muted-foreground">Handle của người này trong cây gia phả (VD: P001)</p>
-                            <div className="flex gap-2">
-                                <Input
-                                    placeholder="P001"
+                            <p className="text-xs text-muted-foreground">Người này trong cây gia phả là ai?</p>
+                            {permPeopleLoading ? (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang tải...
+                                </div>
+                            ) : (
+                                <PersonPicker
+                                    people={permPeople}
                                     value={permPersonHandle}
-                                    onChange={e => setPermPersonHandle(e.target.value.toUpperCase())}
-                                    className="font-mono"
-                                />
-                                {permPersonHandle && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setPermPersonHandle('')}
-                                        className="text-muted-foreground"
-                                    >
-                                        Xoá
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Extra editable handles */}
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Hồ sơ được phép sửa thêm</label>
-                            <p className="text-xs text-muted-foreground">Ngoài hồ sơ cá nhân, người này còn được phép đề xuất sửa các hồ sơ sau</p>
-                            <div className="flex gap-2">
-                                <Input
-                                    placeholder="P002"
-                                    value={permNewHandle}
-                                    onChange={e => setPermNewHandle(e.target.value.toUpperCase())}
-                                    className="font-mono"
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                            const h = permNewHandle.trim();
-                                            if (h && !permEditableHandles.includes(h)) {
-                                                setPermEditableHandles(prev => [...prev, h]);
-                                            }
-                                            setPermNewHandle('');
-                                        }
+                                    onChange={setPermPersonHandle}
+                                    placeholder="Chọn hồ sơ cá nhân..."
+                                    clanFilter={permClanFilter}
+                                    onClanFilterChange={async (clan) => {
+                                        setPermClanFilter(clan);
+                                        setPermPeopleLoading(true);
+                                        const people = await fetchPeopleForSelect(clan || undefined);
+                                        setPermPeople(people);
+                                        setPermPeopleLoading(false);
                                     }}
+                                    clans={permClans}
                                 />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                        const h = permNewHandle.trim();
-                                        if (h && !permEditableHandles.includes(h)) {
-                                            setPermEditableHandles(prev => [...prev, h]);
-                                        }
-                                        setPermNewHandle('');
-                                    }}
-                                    disabled={!permNewHandle.trim()}
-                                >
-                                    Thêm
-                                </Button>
-                            </div>
+                            )}
                             {permEditableHandles.filter(h => h !== permPersonHandle).length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                     {permEditableHandles
@@ -893,6 +1002,33 @@ export default function AdminUsersPage() {
                                             </span>
                                         ))}
                                 </div>
+                            )}
+                        </div>
+
+                        {/* Extra editable handles */}
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Hồ sơ được phép sửa thêm</label>
+                            <p className="text-xs text-muted-foreground">Ngoài hồ sơ cá nhân, người này còn được phép đề xuất sửa các hồ sơ sau</p>
+                            {!permPeopleLoading && (
+                                <PersonPicker
+                                    people={permPeople.filter(p => p.handle !== permPersonHandle && !permEditableHandles.includes(p.handle))}
+                                    value=""
+                                    onChange={h => {
+                                        if (h && !permEditableHandles.includes(h)) {
+                                            setPermEditableHandles(prev => [...prev, h]);
+                                        }
+                                    }}
+                                    placeholder="Thêm hồ sơ..."
+                                    clanFilter={permClanFilter}
+                                    onClanFilterChange={async (clan) => {
+                                        setPermClanFilter(clan);
+                                        setPermPeopleLoading(true);
+                                        const people = await fetchPeopleForSelect(clan || undefined);
+                                        setPermPeople(people);
+                                        setPermPeopleLoading(false);
+                                    }}
+                                    clans={permClans}
+                                />
                             )}
                         </div>
 
