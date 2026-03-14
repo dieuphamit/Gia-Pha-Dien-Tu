@@ -871,7 +871,9 @@ export async function generateFamilyHandle(): Promise<string> {
     return `F${String(next).padStart(3, '0')}`;
 }
 
-/** Fetch families with display info (for dropdown), optionally filtered by clan */
+/** Fetch families with display info (for dropdown), optionally filtered by clan.
+ *  Clan filtering is done via members' clan_handles (not the family's own clan_handles,
+ *  which may be unpopulated for older records). */
 export async function fetchFamiliesForSelect(clanHandle?: string): Promise<Array<{
     handle: string;
     fatherName?: string;
@@ -879,16 +881,10 @@ export async function fetchFamiliesForSelect(clanHandle?: string): Promise<Array
     label: string;
     parentGeneration?: number;
 }>> {
-    let query = supabase
+    const { data: families } = await supabase
         .from('families')
         .select('handle, father_handle, mother_handle')
         .order('handle');
-    if (clanHandle) {
-        // Match families where clan_handles contains clanHandle OR clan_handle equals clanHandle
-        // (covers older records that were inserted before clan_handles was populated)
-        query = query.or(`clan_handles.cs.{${clanHandle}},clan_handle.eq.${clanHandle}`);
-    }
-    const { data: families } = await query;
 
     if (!families) return [];
 
@@ -901,20 +897,37 @@ export async function fetchFamiliesForSelect(clanHandle?: string): Promise<Array
 
     let nameMap: Record<string, string> = {};
     let generationMap: Record<string, number> = {};
+    // Set of person handles that belong to the target clan (null = no filter)
+    let clanPersonHandles: Set<string> | null = null;
+
     if (personHandles.size > 0) {
-        const { data: people } = await supabase
+        let peopleQuery = supabase
             .from('people')
             .select('handle, display_name, generation')
             .in('handle', Array.from(personHandles));
+        if (clanHandle) {
+            // Filter members by clan; families are included if any parent belongs to the clan
+            peopleQuery = peopleQuery.or(`clan_handles.cs.{${clanHandle}},clan_handle.eq.${clanHandle}`);
+        }
+        const { data: people } = await peopleQuery;
         if (people) {
+            clanPersonHandles = new Set<string>();
             people.forEach((p: { handle: string; display_name: string; generation: number }) => {
                 nameMap[p.handle] = p.display_name;
                 generationMap[p.handle] = p.generation;
+                clanPersonHandles!.add(p.handle);
             });
         }
     }
 
     return families
+        .filter((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
+            if (!clanHandle || !clanPersonHandles) return true;
+            // Include family if father OR mother belongs to the target clan
+            const fatherInClan = f.father_handle ? clanPersonHandles.has(f.father_handle) : false;
+            const motherInClan = f.mother_handle ? clanPersonHandles.has(f.mother_handle) : false;
+            return fatherInClan || motherInClan;
+        })
         .map((f: { handle: string; father_handle: string | null; mother_handle: string | null }) => {
             const fatherName = f.father_handle ? nameMap[f.father_handle] : undefined;
             const motherName = f.mother_handle ? nameMap[f.mother_handle] : undefined;

@@ -391,6 +391,7 @@ function StepRelation({
     preselectedFamily,
     onGenerationChange,
     onPatrilinealChange,
+    clanHandle,
 }: {
     personHandle: string;
     personName: string;
@@ -404,6 +405,7 @@ function StepRelation({
     preselectedFamily?: string;
     onGenerationChange: (gen: number) => void;
     onPatrilinealChange: (val: boolean) => void;
+    clanHandle?: string;
 }) {
     const [mode, setMode] = useState<RelationMode>(preselectedFamily ? 'child' : null);
     const [selectedFamily, setSelectedFamily] = useState(preselectedFamily ?? '');
@@ -454,6 +456,7 @@ function StepRelation({
                         handle: targetFamilyHandle,
                         fatherHandle: spouseRole === 'father' ? finalPersonHandle : undefined,
                         motherHandle: spouseRole === 'mother' ? finalPersonHandle : undefined,
+                        clanHandle,
                     });
                     if (r.error) { setError(r.error); setLoading(false); return; }
 
@@ -501,6 +504,7 @@ function StepRelation({
                             handle: newFH,
                             fatherHandle: personRole === 'father' ? finalPersonHandle : newSpouseHandle,
                             motherHandle: personRole === 'mother' ? finalPersonHandle : newSpouseHandle,
+                            clanHandle,
                         });
                         if (r.error) { setError(r.error); setLoading(false); return; }
                         await addPersonAsSpouse(finalPersonHandle, newFH, personRole);
@@ -982,6 +986,7 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess, defaultClanHand
                             setGenerationAutoComputed(true);
                         }}
                         onPatrilinealChange={val => setForm(prev => ({ ...prev, isPatrilineal: val }))}
+                        clanHandle={form.clanHandles.length === 1 ? form.clanHandles[0] : undefined}
                     />
                 )}
 
