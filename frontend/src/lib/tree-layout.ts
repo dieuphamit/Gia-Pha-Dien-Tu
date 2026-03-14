@@ -104,9 +104,23 @@ interface Subtree {
     contour: Contour;    // per-depth contour for overlap detection
 }
 
+interface MultiSpouseFamilyData {
+    fam: TreeFamily;
+    spouse: TreeNode | undefined;
+    childItems: ChildItem[];
+    childrenSpan: number;
+    familyUnitIndex: number;
+}
+
 interface ChildItem {
     subtree?: Subtree;
     leaf?: TreeNode;
+    /** Pre-built multi-spouse group — placed via placeMultiSpouseGroup */
+    multiSpouseGroup?: {
+        patrilineal: TreeNode;
+        familyData: MultiSpouseFamilyData[];
+        leftWing: number;
+    };
     width: number;
     anchorX: number;     // card center X from left edge of this child item
     contour: Contour;    // per-depth contour
@@ -171,49 +185,47 @@ function buildSubtree(
         const child = personMap.get(childHandle);
         if (!child) continue;
 
-        // Find child's own family (where child is a parent).
-        // Prefer the most complete family (both father + mother) to avoid picking
-        // an incomplete placeholder record when duplicates exist for the same person.
+        // Find all unvisited families where this child is a parent, sorted by marriageOrder.
         const candidateFamilies = Array.from(familyMap.values()).filter(f =>
             !visited.has(f.handle) &&
             (f.fatherHandle === childHandle || f.motherHandle === childHandle)
-        );
-        const childFamily = candidateFamilies.find(f => f.fatherHandle && f.motherHandle)
-            ?? candidateFamilies[0];
+        ).sort((a, b) => a.marriageOrder - b.marriageOrder);
 
-        // If the found family's spouse has an unvisited parent family, defer this child.
-        // The child's family will be built when the spouse's parent family is traversed,
-        // keeping cross-clan subtrees in the correct branch of the tree.
-        if (childFamily) {
-            const spouseHandle = childFamily.fatherHandle === childHandle
-                ? childFamily.motherHandle
-                : childFamily.fatherHandle;
+        // Filter out families whose spouse has an unvisited parent family that is an INTERNAL
+        // branch (i.e., the parent family has at least one parent known in this dataset).
+        // Cross-clan / foreign parent families (parents not in personMap) do NOT cause deferral —
+        // they are foreign roots and should not pull a person away from their correct position.
+        const eligibleFamilies = candidateFamilies.filter(f => {
+            const spouseHandle = f.fatherHandle === childHandle ? f.motherHandle : f.fatherHandle;
             const spouseNode = spouseHandle ? personMap.get(spouseHandle) : undefined;
-            if (spouseNode?.parentFamilies.some(pfId => familyMap.has(pfId) && !visited.has(pfId))) {
-                continue;
-            }
+            return !spouseNode?.parentFamilies.some(pfId => {
+                if (!familyMap.has(pfId) || visited.has(pfId)) return false;
+                const parentFam = familyMap.get(pfId)!;
+                const fatherKnown = parentFam.fatherHandle ? personMap.has(parentFam.fatherHandle) : false;
+                const motherKnown = parentFam.motherHandle ? personMap.has(parentFam.motherHandle) : false;
+                return fatherKnown || motherKnown; // only defer for internal families
+            });
+        });
+
+        if (eligibleFamilies.length === 0) {
+            if (candidateFamilies.length > 0) continue; // all families deferred — skip for now
+            // No families at all: leaf node
+            const leafContour: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
+            children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: leafContour });
+            continue;
         }
 
-        if (childFamily) {
-            const sub = buildSubtree(childFamily, personMap, familyMap, visited);
-            if (sub) {
-                children.push({
-                    subtree: sub, width: sub.width, anchorX: sub.anchorX,
-                    contour: sub.contour,
-                });
-            } else {
-                const leafContour: Contour = {
-                    left: [-CARD_W / 2],
-                    right: [CARD_W / 2],
-                };
-                children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: leafContour });
-            }
+        if (eligibleFamilies.length > 1) {
+            // Multi-spouse: build all families as a single grouped block
+            children.push(buildMultiSpouseChildItem(child, eligibleFamilies, personMap, familyMap, visited));
         } else {
-            const leafContour: Contour = {
-                left: [-CARD_W / 2],
-                right: [CARD_W / 2],
-            };
-            children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: leafContour });
+            const sub = buildSubtree(eligibleFamilies[0], personMap, familyMap, visited);
+            if (sub) {
+                children.push({ subtree: sub, width: sub.width, anchorX: sub.anchorX, contour: sub.contour });
+            } else {
+                const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
+                children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
+            }
         }
     }
 
@@ -374,7 +386,9 @@ function assignPositions(
         // RULE 1: single child → child's anchor aligned at patriCenterX
         const item = children[0];
         const cx = patriCenterX - item.anchorX;
-        if (item.subtree) {
+        if (item.multiSpouseGroup) {
+            placeMultiSpouseGroup(item.multiSpouseGroup, cx, generation + 1, allNodes, placed);
+        } else if (item.subtree) {
             assignPositions(item.subtree, cx, generation + 1, allNodes, placed);
         } else if (item.leaf && !placed.has(item.leaf.handle)) {
             const childY = (generation + 1) * (CARD_H + V_SPACE);
@@ -400,7 +414,9 @@ function assignPositions(
             const childAnchorX = patriCenterX - midpoint + storedOffsets[i];
             const childStartX = childAnchorX - item.anchorX;
 
-            if (item.subtree) {
+            if (item.multiSpouseGroup) {
+                placeMultiSpouseGroup(item.multiSpouseGroup, childStartX, generation + 1, allNodes, placed);
+            } else if (item.subtree) {
                 assignPositions(item.subtree, childStartX, generation + 1, allNodes, placed);
             } else if (item.leaf && !placed.has(item.leaf.handle)) {
                 const childY = (generation + 1) * (CARD_H + V_SPACE);
@@ -424,7 +440,9 @@ function assignPositions(
 
         let cx = blockStartX;
         for (const item of children) {
-            if (item.subtree) {
+            if (item.multiSpouseGroup) {
+                placeMultiSpouseGroup(item.multiSpouseGroup, cx, generation + 1, allNodes, placed);
+            } else if (item.subtree) {
                 assignPositions(item.subtree, cx, generation + 1, allNodes, placed);
             } else if (item.leaf && !placed.has(item.leaf.handle)) {
                 const childY = (generation + 1) * (CARD_H + V_SPACE);
@@ -453,31 +471,37 @@ function buildChildItems(
         const candidateFamilies = Array.from(familyMap.values()).filter(f =>
             !visited.has(f.handle) &&
             (f.fatherHandle === childHandle || f.motherHandle === childHandle)
-        );
-        const childFamily = candidateFamilies.find(f => f.fatherHandle && f.motherHandle)
-            ?? candidateFamilies[0];
+        ).sort((a, b) => a.marriageOrder - b.marriageOrder);
 
-        if (childFamily) {
-            const spouseHandle = childFamily.fatherHandle === childHandle
-                ? childFamily.motherHandle
-                : childFamily.fatherHandle;
+        const eligibleFamilies = candidateFamilies.filter(f => {
+            const spouseHandle = f.fatherHandle === childHandle ? f.motherHandle : f.fatherHandle;
             const spouseNode = spouseHandle ? personMap.get(spouseHandle) : undefined;
-            if (spouseNode?.parentFamilies.some(pfId => familyMap.has(pfId) && !visited.has(pfId))) {
-                continue;
-            }
+            return !spouseNode?.parentFamilies.some(pfId => {
+                if (!familyMap.has(pfId) || visited.has(pfId)) return false;
+                const parentFam = familyMap.get(pfId)!;
+                const fatherKnown = parentFam.fatherHandle ? personMap.has(parentFam.fatherHandle) : false;
+                const motherKnown = parentFam.motherHandle ? personMap.has(parentFam.motherHandle) : false;
+                return fatherKnown || motherKnown;
+            });
+        });
+
+        if (eligibleFamilies.length === 0) {
+            if (candidateFamilies.length > 0) continue;
+            const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
+            children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
+            continue;
         }
 
-        if (childFamily) {
-            const sub = buildSubtree(childFamily, personMap, familyMap, visited);
+        if (eligibleFamilies.length > 1) {
+            children.push(buildMultiSpouseChildItem(child, eligibleFamilies, personMap, familyMap, visited));
+        } else {
+            const sub = buildSubtree(eligibleFamilies[0], personMap, familyMap, visited);
             if (sub) {
                 children.push({ subtree: sub, width: sub.width, anchorX: sub.anchorX, contour: sub.contour });
             } else {
                 const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
                 children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
             }
-        } else {
-            const lc: Contour = { left: [-CARD_W / 2], right: [CARD_W / 2] };
-            children.push({ leaf: child, width: CARD_W, anchorX: CARD_W / 2, contour: lc });
         }
     }
     return children;
@@ -496,6 +520,97 @@ function computeChildrenSpan(items: ChildItem[]): number {
     return totalOffset + items[items.length - 1].width;
 }
 
+/**
+ * Build a ChildItem representing a multi-spouse group (patrilineal person with N wives/husbands).
+ * Marks all families + their descendants visited, computes total width/anchorX/contour once.
+ */
+function buildMultiSpouseChildItem(
+    patrilineal: TreeNode,
+    sortedFamilies: TreeFamily[],
+    personMap: Map<string, TreeNode>,
+    familyMap: Map<string, TreeFamily>,
+    visited: Set<string>,
+): ChildItem {
+    for (const fam of sortedFamilies) visited.add(fam.handle);
+
+    const familyData: MultiSpouseFamilyData[] = sortedFamilies.map((fam, idx) => {
+        const spouseHandle = fam.fatherHandle === patrilineal.handle ? fam.motherHandle : fam.fatherHandle;
+        const spouse = spouseHandle ? personMap.get(spouseHandle) : undefined;
+        const childItems = buildChildItems(fam, personMap, familyMap, visited);
+        const childrenSpan = computeChildrenSpan(childItems);
+        return { fam, spouse, childItems, childrenSpan, familyUnitIndex: idx };
+    });
+
+    const leftChildSpan = familyData[0].childrenSpan;
+    const leftWing = Math.max(
+        CARD_W + COUPLE_GAP,
+        Math.ceil((CARD_W + COUPLE_GAP + leftChildSpan) / 2),
+    );
+
+    let rightTotal = 0;
+    for (let i = 1; i < familyData.length; i++) {
+        const wingWidth = Math.max(CARD_W, familyData[i].childrenSpan);
+        rightTotal += COUPLE_GAP + wingWidth;
+    }
+
+    const width = leftWing + CARD_W + rightTotal;
+    const anchorX = leftWing + CARD_W / 2;
+    // Bounding-box contour (two levels: parent row + children row)
+    const contour: Contour = {
+        left: [-anchorX, -anchorX],
+        right: [width - anchorX, width - anchorX],
+    };
+    return { multiSpouseGroup: { patrilineal, familyData, leftWing }, width, anchorX, contour };
+}
+
+/**
+ * Place a pre-built multi-spouse group given its block's left edge (startX) and generation.
+ * Called from assignChildItems and assignPositions when encountering a multiSpouseGroup item.
+ */
+function placeMultiSpouseGroup(
+    group: { patrilineal: TreeNode; familyData: MultiSpouseFamilyData[]; leftWing: number },
+    startX: number,
+    generation: number,
+    allNodes: PositionedNode[],
+    placed: Set<string>,
+): void {
+    const y = generation * (CARD_H + V_SPACE);
+    const P_cx = startX + group.leftWing + CARD_W / 2;
+
+    if (!placed.has(group.patrilineal.handle)) {
+        allNodes.push({ node: group.patrilineal, x: P_cx - CARD_W / 2, y, generation });
+        placed.add(group.patrilineal.handle);
+    }
+
+    // W1 left of P
+    const W1_cx = P_cx - CARD_W - COUPLE_GAP;
+    const fd0 = group.familyData[0];
+    if (fd0.spouse && !placed.has(fd0.spouse.handle)) {
+        allNodes.push({ node: fd0.spouse, x: W1_cx - CARD_W / 2, y, generation });
+        placed.add(fd0.spouse.handle);
+    }
+    if (fd0.childItems.length > 0) {
+        assignChildItems(fd0.childItems, (W1_cx + P_cx) / 2, generation + 1, allNodes, placed);
+    }
+
+    // W2, W3, ... right of P
+    let rightCursor = P_cx + CARD_W / 2 + COUPLE_GAP;
+    for (let i = 1; i < group.familyData.length; i++) {
+        const fd = group.familyData[i];
+        const Wi_cx = rightCursor + CARD_W / 2;
+        const wingWidth = Math.max(CARD_W, fd.childrenSpan);
+        if (fd.spouse && !placed.has(fd.spouse.handle)) {
+            allNodes.push({ node: fd.spouse, x: rightCursor, y, generation });
+            placed.add(fd.spouse.handle);
+        }
+        if (fd.childItems.length > 0) {
+            const childCenter = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            assignChildItems(fd.childItems, childCenter, generation + 1, allNodes, placed);
+        }
+        rightCursor += wingWidth + H_SPACE;
+    }
+}
+
 /** Place ChildItem[] so their midpoint anchor is at centerX, at the given generation row */
 function assignChildItems(
     items: ChildItem[],
@@ -510,7 +625,9 @@ function assignChildItems(
     if (items.length === 1) {
         const item = items[0];
         const childStartX = centerX - item.anchorX;
-        if (item.subtree) {
+        if (item.multiSpouseGroup) {
+            placeMultiSpouseGroup(item.multiSpouseGroup, childStartX, generation, allNodes, placed);
+        } else if (item.subtree) {
             assignPositions(item.subtree, childStartX, generation, allNodes, placed);
         } else if (item.leaf && !placed.has(item.leaf.handle)) {
             allNodes.push({ node: item.leaf, x: childStartX, y, generation });
@@ -533,7 +650,9 @@ function assignChildItems(
         const item = items[i];
         const childAnchorX = centerX - midpoint + offsets[i];
         const childStartX = childAnchorX - item.anchorX;
-        if (item.subtree) {
+        if (item.multiSpouseGroup) {
+            placeMultiSpouseGroup(item.multiSpouseGroup, childStartX, generation, allNodes, placed);
+        } else if (item.subtree) {
             assignPositions(item.subtree, childStartX, generation, allNodes, placed);
         } else if (item.leaf && !placed.has(item.leaf.handle)) {
             allNodes.push({ node: item.leaf, x: childStartX, y, generation });
@@ -865,7 +984,11 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
 
         // Parent-child connections: strictly orthogonal bus-line
         if (patriNode && fam.children.length > 0) {
-            const parentCX = patriNode.x + CARD_W / 2;
+            // Use couple midpoint when both parents exist, so each family's
+            // children visually connect to their own couple unit, not just the patrilineal.
+            const parentCX = (fatherNode && motherNode)
+                ? (Math.min(fatherNode.x, motherNode.x) + CARD_W + Math.max(fatherNode.x, motherNode.x)) / 2
+                : patriNode.x + CARD_W / 2;
             const parentBottomY = patriNode.y + CARD_H;
 
             const placedChildren = fam.children
