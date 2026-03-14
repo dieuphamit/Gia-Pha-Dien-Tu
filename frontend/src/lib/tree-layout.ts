@@ -775,8 +775,20 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
 
                 const childItems = buildChildItems(fam, personMap, familyMap, visited);
                 if (childItems.length > 0) {
-                    const P_cx = personNode.x + CARD_W / 2;
-                    assignChildItems(childItems, (P_cx + spouseCx) / 2, personNode.generation + 1, allNodes, placed);
+                    const childGeneration = personNode.generation + 1;
+                    // Find rightmost node already placed at the child generation row
+                    let childGenRightEdge = spouseX - CARD_W;
+                    for (const n of allNodes) {
+                        if (n.generation === childGeneration) {
+                            childGenRightEdge = Math.max(childGenRightEdge, n.x + CARD_W);
+                        }
+                    }
+                    // Place children to the right of all existing nodes at that row,
+                    // but at minimum aligned below the spouse card.
+                    const childrenSpan = computeChildrenSpan(childItems);
+                    const leftStart = Math.max(childGenRightEdge + H_SPACE, spouseX);
+                    const centerX = leftStart + childrenSpan / 2;
+                    assignChildItems(childItems, centerX, childGeneration, allNodes, placed);
                 }
             }
         }
