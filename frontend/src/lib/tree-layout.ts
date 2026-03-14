@@ -507,6 +507,30 @@ function buildChildItems(
     return children;
 }
 
+/**
+ * Adjust centerX for a set of child items so they don't overlap with any existing
+ * nodes already placed at the same generation row. Returns the (possibly increased) centerX.
+ */
+function clearChildRow(
+    items: ChildItem[],
+    idealCenter: number,
+    generation: number,
+    allNodes: PositionedNode[],
+): number {
+    if (items.length === 0) return idealCenter;
+    // Find rightmost placed node at this generation
+    let rightEdge = -Infinity;
+    for (const n of allNodes) {
+        if (n.generation === generation) rightEdge = Math.max(rightEdge, n.x + CARD_W);
+    }
+    if (rightEdge === -Infinity) return idealCenter;
+    // Compute child pack span
+    const span = computeChildrenSpan(items);
+    // Minimum center: left edge starts at rightEdge + H_SPACE
+    const minCenter = rightEdge + H_SPACE + span / 2;
+    return Math.max(idealCenter, minCenter);
+}
+
 /** Compute total packed span of ChildItem[] using contour-based packing */
 function computeChildrenSpan(items: ChildItem[]): number {
     if (items.length === 0) return 0;
@@ -604,7 +628,9 @@ function placeMultiSpouseGroup(
             placed.add(fd.spouse.handle);
         }
         if (fd.childItems.length > 0) {
-            const childCenter = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            const ideal = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            // Shift right if F1's children (or any earlier children) extend into this area
+            const childCenter = clearChildRow(fd.childItems, ideal, generation + 1, allNodes);
             assignChildItems(fd.childItems, childCenter, generation + 1, allNodes, placed);
         }
         rightCursor += wingWidth + H_SPACE;
@@ -744,7 +770,8 @@ function assignMultiSpouseGroup(
         }
 
         if (fd.childItems.length > 0) {
-            const childCenter = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            const ideal = i === 1 ? (P_cx + Wi_cx) / 2 : Wi_cx;
+            const childCenter = clearChildRow(fd.childItems, ideal, startGeneration + 1, allNodes);
             assignChildItems(fd.childItems, childCenter, startGeneration + 1, allNodes, placed);
         }
 
