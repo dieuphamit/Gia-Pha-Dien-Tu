@@ -811,6 +811,7 @@ export async function addFamily(family: {
             mother_handle: family.motherHandle || null,
             children: family.children || [],
             clan_handle: family.clanHandle || null,
+            clan_handles: family.clanHandle ? [family.clanHandle] : [],
             marriage_order: marriageOrder,
         });
 
@@ -883,7 +884,9 @@ export async function fetchFamiliesForSelect(clanHandle?: string): Promise<Array
         .select('handle, father_handle, mother_handle')
         .order('handle');
     if (clanHandle) {
-        query = query.contains('clan_handles', [clanHandle]);
+        // Match families where clan_handles contains clanHandle OR clan_handle equals clanHandle
+        // (covers older records that were inserted before clan_handles was populated)
+        query = query.or(`clan_handles.cs.{${clanHandle}},clan_handle.eq.${clanHandle}`);
     }
     const { data: families } = await query;
 
@@ -941,7 +944,8 @@ export async function fetchPeopleForSelect(clanHandle?: string): Promise<Array<{
         .order('generation')
         .order('display_name');
     if (clanHandle) {
-        query = query.contains('clan_handles', [clanHandle]);
+        // Match people where clan_handles contains clanHandle OR clan_handle equals clanHandle
+        query = query.or(`clan_handles.cs.{${clanHandle}},clan_handle.eq.${clanHandle}`);
     }
     const { data } = await query;
 

@@ -28,6 +28,8 @@ import {
     addPersonAsSpouse,
     removePersonFromSpouseFamily,
     fetchClans,
+    fetchFamiliesForSelect,
+    fetchPeopleForSelect,
 } from '@/lib/supabase-data';
 
 interface FamilyOption {
@@ -276,48 +278,41 @@ export default function PersonProfilePage() {
     };
 
     const loadFamilyOptions = async () => {
-        const { supabase } = await import('@/lib/supabase');
-        const [{ data: fams }, { data: people }] = await Promise.all([
-            supabase.from('families').select('handle, father_handle, mother_handle, children').order('handle'),
-            supabase.from('people').select('handle, display_name, generation, gender'),
-        ]);
-        if (!fams) return;
-        const typedPeople = (people || []) as Array<{ handle: string; display_name: string; generation?: number; gender?: number }>;
-        const nameMap = new Map(typedPeople.map(p => [p.handle, p.display_name]));
-        setAllFamilies(fams.map(f => {
-            const parts: string[] = [];
-            if (f.father_handle) parts.push(nameMap.get(f.father_handle) || f.father_handle);
-            if (f.mother_handle) parts.push(nameMap.get(f.mother_handle) || f.mother_handle);
-            const label = parts.length > 0
-                ? `${f.handle} — ${parts.join(' & ')} (${(f.children as string[])?.length || 0} con)`
-                : `${f.handle} (chưa có thành viên)`;
-            return { handle: f.handle, label };
-        }));
+        // Filter by the person's clan (single clan only; multi-clan shows all)
+        const clanFilter = personClanHandle.length === 1 ? personClanHandle[0] : undefined;
 
-        const currentPerson = await supabase.from('people').select('generation, gender').eq('handle', handle).single();
-        const currentPersonData = currentPerson?.data as { generation?: number, gender?: number } | undefined;
-        const pGen = currentPersonData?.generation;
+        const [fams, people] = await Promise.all([
+            fetchFamiliesForSelect(clanFilter),
+            fetchPeopleForSelect(clanFilter),
+        ]);
+
+        setAllFamilies(fams.map(f => ({
+            handle: f.handle,
+            label: f.label,
+        })));
+
+        const pGen = person?.generation;
+        const pGender = person?.gender;
 
         setAllChildrenOptions(
-            typedPeople
+            people
                 .filter(p => !pGen || (p.generation && p.generation > pGen))
                 .map(p => ({
                     handle: p.handle,
-                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
+                    label: `${p.handle} — ${p.displayName} ${p.generation ? `(Đời ${p.generation})` : ''}`
                 }))
         );
 
         setAllSpouseOptions(
-            typedPeople
+            people
                 .filter(p => {
-                    if (p.handle === handle) return false; // loại chính mình
-                    // Chỉ lọc giới tính khi cả 2 đều có giá trị hợp lệ (≠ 0/null)
-                    if (currentPersonData?.gender && p.gender && p.gender === currentPersonData.gender) return false;
+                    if (p.handle === handle) return false;
+                    if (pGender && p.gender && p.gender === pGender) return false;
                     return true;
                 })
                 .map(p => ({
                     handle: p.handle,
-                    label: `${p.handle} — ${p.display_name} ${p.generation ? `(Đời ${p.generation})` : ''}`
+                    label: `${p.handle} — ${p.displayName} ${p.generation ? `(Đời ${p.generation})` : ''}`
                 }))
         );
     };
