@@ -268,7 +268,15 @@ export default function PeopleListPage() {
                             Thêm thành viên
                         </Button>
                     )}
-                    {isMember && <ContributeNewPersonDialog />}
+                    {isMember && (
+                        <ContributeNewPersonDialog
+                            defaultClanHandles={
+                                clanFilter !== 'all'
+                                    ? [clanFilter]
+                                    : (accessibleClans ?? undefined)
+                            }
+                        />
+                    )}
                 </div>
             </div>
 
@@ -276,6 +284,11 @@ export default function PeopleListPage() {
                 open={addDialogOpen}
                 onOpenChange={setAddDialogOpen}
                 onSuccess={fetchPeople}
+                defaultClanHandles={
+                    clanFilter !== 'all'
+                        ? [clanFilter]
+                        : (accessibleClans ?? undefined)
+                }
             />
 
             {/* Filters */}

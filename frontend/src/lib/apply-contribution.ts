@@ -32,6 +32,7 @@ export interface AddPersonPayload {
     spouseHandle?: string;
     childrenHandles?: string[];
     avatarUrl?: string; // ảnh đại diện đã upload sẵn, set khi tạo người
+    clanHandles?: string[];
 }
 
 export interface AddEventPayload {

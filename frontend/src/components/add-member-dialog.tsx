@@ -763,12 +763,14 @@ interface AddMemberDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess?: () => void;
+    defaultClanHandles?: string[];
 }
 
-export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDialogProps) {
+export function AddMemberDialog({ open, onOpenChange, onSuccess, defaultClanHandles }: AddMemberDialogProps) {
     const { isAdmin } = useAuth();
     const [step, setStep] = useState<Step>('info');
-    const [form, setForm] = useState<FormData>(INITIAL_FORM);
+    const initialClanHandles = defaultClanHandles && defaultClanHandles.length > 0 ? defaultClanHandles : INITIAL_FORM.clanHandles;
+    const [form, setForm] = useState<FormData>({ ...INITIAL_FORM, clanHandles: initialClanHandles });
     const [createdHandle, setCreatedHandle] = useState('');
     const [doneMessage, setDoneMessage] = useState('');
     const [creating, setCreating] = useState(false);
@@ -784,6 +786,10 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
     // Load families + people + clans for dropdowns when dialog opens
     useEffect(() => {
         if (!open) return;
+        // Sync clan from context each time dialog opens
+        if (defaultClanHandles && defaultClanHandles.length > 0) {
+            setForm(prev => ({ ...prev, clanHandles: defaultClanHandles }));
+        }
         setLoadingOptions(true);
         Promise.all([fetchFamiliesForSelect(), fetchPeopleForSelect(), fetchClans()])
             .then(([fams, persons, clans]) => {
@@ -792,18 +798,19 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess }: AddMemberDial
                 setAvailableClans(clans);
             })
             .finally(() => setLoadingOptions(false));
-    }, [open]);
+    }, [open, defaultClanHandles]);
 
     const resetAll = useCallback(() => {
         setStep('info');
-        setForm(INITIAL_FORM);
+        const resetClanHandles = defaultClanHandles && defaultClanHandles.length > 0 ? defaultClanHandles : INITIAL_FORM.clanHandles;
+        setForm({ ...INITIAL_FORM, clanHandles: resetClanHandles });
         setCreatedHandle('');
         setDoneMessage('');
         setCreateError(null);
         setAvatarFile(null);
         setAvatarPreview(null);
         setGenerationAutoComputed(false);
-    }, []);
+    }, [defaultClanHandles]);
 
     const handlePhotoChange = useCallback((file: File | null) => {
         setAvatarFile(file);

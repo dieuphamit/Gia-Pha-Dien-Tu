@@ -34,10 +34,15 @@ interface NewPersonPayload {
     childrenHandles?: string[];
     spouseHandle?: string;
     avatarUrl?: string; // URL ảnh đại diện (upload trước khi submit)
+    clanHandles?: string[];
 }
 
-export function ContributeNewPersonDialog() {
-    const { user, profile } = useAuth();
+interface ContributeNewPersonDialogProps {
+    defaultClanHandles?: string[];
+}
+
+export function ContributeNewPersonDialog({ defaultClanHandles }: ContributeNewPersonDialogProps = {}) {
+    const { user, profile, accessibleClans } = useAuth();
     const [open, setOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [sent, setSent] = useState(false);
@@ -155,6 +160,11 @@ export function ContributeNewPersonDialog() {
             setUploadingPhoto(false);
         }
 
+        // Resolve clan: prop > accessibleClans fallback
+        const resolvedClanHandles = (defaultClanHandles && defaultClanHandles.length > 0)
+            ? defaultClanHandles
+            : (accessibleClans && accessibleClans.length > 0 ? accessibleClans : ['pham']);
+
         const payload: NewPersonPayload = {
             displayName: displayName.trim(),
             gender,
@@ -174,6 +184,7 @@ export function ContributeNewPersonDialog() {
             childrenHandles: childrenHandles.length > 0 ? childrenHandles : undefined,
             spouseHandle: spouseHandle || undefined,
             avatarUrl: uploadedAvatarUrl,
+            clanHandles: resolvedClanHandles,
         };
 
         const parentFamilyLabel = familyOptions.find(f => f.handle === parentFamilyHandle)?.label || '';

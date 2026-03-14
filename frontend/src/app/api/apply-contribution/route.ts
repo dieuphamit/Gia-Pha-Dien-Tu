@@ -179,24 +179,37 @@ async function applyAddPerson(
     const deathYear = payload.deathYear ||
         (payload.deathDate ? new Date(payload.deathDate).getFullYear() : null);
 
-    // Inherit clan_handle from related person/family
+    // Resolve clan: use payload.clanHandles if provided, else inherit from related person/family
     let clanHandle: string | null = null;
-    const relatedPersonHandle = contribution.person_handle as string | null;
-    if (relatedPersonHandle) {
-        const { data: relPerson } = await serviceClient
-            .from('people')
-            .select('clan_handle')
-            .eq('handle', relatedPersonHandle)
-            .maybeSingle();
-        clanHandle = (relPerson as { clan_handle: string | null } | null)?.clan_handle ?? null;
-    }
-    if (!clanHandle && payload.parentFamilyHandle) {
-        const { data: relFamily } = await serviceClient
-            .from('families')
-            .select('clan_handle')
-            .eq('handle', payload.parentFamilyHandle)
-            .maybeSingle();
-        clanHandle = (relFamily as { clan_handle: string | null } | null)?.clan_handle ?? null;
+    let resolvedClanHandles: string[] = payload.clanHandles && payload.clanHandles.length > 0
+        ? payload.clanHandles
+        : [];
+
+    if (resolvedClanHandles.length === 0) {
+        const relatedPersonHandle = contribution.person_handle as string | null;
+        if (relatedPersonHandle) {
+            const { data: relPerson } = await serviceClient
+                .from('people')
+                .select('clan_handle, clan_handles')
+                .eq('handle', relatedPersonHandle)
+                .maybeSingle();
+            clanHandle = (relPerson as { clan_handle: string | null } | null)?.clan_handle ?? null;
+            const inherited = (relPerson as { clan_handles?: string[] } | null)?.clan_handles;
+            if (inherited && inherited.length > 0) resolvedClanHandles = inherited;
+        }
+        if (resolvedClanHandles.length === 0 && payload.parentFamilyHandle) {
+            const { data: relFamily } = await serviceClient
+                .from('families')
+                .select('clan_handle, clan_handles')
+                .eq('handle', payload.parentFamilyHandle)
+                .maybeSingle();
+            clanHandle = (relFamily as { clan_handle: string | null } | null)?.clan_handle ?? null;
+            const inherited = (relFamily as { clan_handles?: string[] } | null)?.clan_handles;
+            if (inherited && inherited.length > 0) resolvedClanHandles = inherited;
+        }
+        if (clanHandle && resolvedClanHandles.length === 0) resolvedClanHandles = [clanHandle];
+    } else {
+        clanHandle = resolvedClanHandles[0];
     }
 
     const { data, error } = await serviceClient
@@ -223,6 +236,7 @@ async function applyAddPerson(
             families: [],
             parent_families: [],
             clan_handle: clanHandle,
+            clan_handles: resolvedClanHandles,
         })
         .select('handle')
         .single();

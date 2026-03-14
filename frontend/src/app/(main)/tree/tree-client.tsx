@@ -1116,6 +1116,7 @@ export default function TreeViewPage() {
                             supaUpdatePersonLiving(handle, isLiving);
                         }}
                         onUpdatePerson={(handle, fields) => {
+                            // Optimistic local update for instant feedback
                             setTreeData(prev => {
                                 if (!prev) return null;
                                 return {
@@ -1123,7 +1124,10 @@ export default function TreeViewPage() {
                                     people: prev.people.map(p => p.handle === handle ? { ...p, ...fields } : p)
                                 };
                             });
-                            supaUpdatePerson(handle, fields);
+                            // Save to DB, then re-fetch with clan filter to ensure correct visibility
+                            supaUpdatePerson(handle, fields).then(() => {
+                                fetchTreeData(selectedClan ?? undefined).then(fresh => setTreeData(fresh));
+                            });
                         }}
                         onReset={async () => {
                             const data = await fetchTreeData(selectedClan ?? undefined);
