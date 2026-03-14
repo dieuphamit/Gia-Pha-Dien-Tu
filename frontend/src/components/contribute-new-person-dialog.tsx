@@ -94,12 +94,16 @@ export function ContributeNewPersonDialog({ defaultClanHandles }: ContributeNewP
     // Thân tộc = có gia đình cha mẹ được chọn
     const computedIsPatrilineal = useMemo(() => !!parentFamilyHandle, [parentFamilyHandle]);
 
+    const activeClan = defaultClanHandles && defaultClanHandles.length === 1
+        ? defaultClanHandles[0]
+        : (accessibleClans && accessibleClans.length === 1 ? accessibleClans[0] : undefined);
+
     useEffect(() => {
         if (open) {
-            fetchPeopleForSelect().then(setPeopleOptions);
-            fetchFamiliesForSelect().then(setFamilyOptions);
+            fetchPeopleForSelect(activeClan).then(setPeopleOptions);
+            fetchFamiliesForSelect(activeClan).then(setFamilyOptions);
         }
-    }, [open]);
+    }, [open, activeClan]);
 
     const reset = () => {
         setDisplayName(''); setGender(1);

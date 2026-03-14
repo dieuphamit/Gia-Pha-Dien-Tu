@@ -790,8 +790,11 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess, defaultClanHand
         if (defaultClanHandles && defaultClanHandles.length > 0) {
             setForm(prev => ({ ...prev, clanHandles: defaultClanHandles }));
         }
+        const activeClan = defaultClanHandles && defaultClanHandles.length === 1
+            ? defaultClanHandles[0]
+            : undefined;
         setLoadingOptions(true);
-        Promise.all([fetchFamiliesForSelect(), fetchPeopleForSelect(), fetchClans()])
+        Promise.all([fetchFamiliesForSelect(activeClan), fetchPeopleForSelect(activeClan), fetchClans()])
             .then(([fams, persons, clans]) => {
                 setFamilies(fams);
                 setPeople(persons);
@@ -908,9 +911,12 @@ export function AddMemberDialog({ open, onOpenChange, onSuccess, defaultClanHand
         setDoneMessage(message);
         setStep('done');
         onSuccess?.();
-        // Refresh families list for next use
-        fetchFamiliesForSelect().then(setFamilies);
-    }, [onSuccess]);
+        // Refresh families list for next use (keep same clan filter)
+        const activeClan = defaultClanHandles && defaultClanHandles.length === 1
+            ? defaultClanHandles[0]
+            : undefined;
+        fetchFamiliesForSelect(activeClan).then(setFamilies);
+    }, [onSuccess, defaultClanHandles]);
 
     const handleAddAnother = useCallback(() => {
         resetAll();

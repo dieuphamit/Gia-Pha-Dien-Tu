@@ -870,18 +870,22 @@ export async function generateFamilyHandle(): Promise<string> {
     return `F${String(next).padStart(3, '0')}`;
 }
 
-/** Fetch all families with display info (for dropdown) */
-export async function fetchFamiliesForSelect(): Promise<Array<{
+/** Fetch families with display info (for dropdown), optionally filtered by clan */
+export async function fetchFamiliesForSelect(clanHandle?: string): Promise<Array<{
     handle: string;
     fatherName?: string;
     motherName?: string;
     label: string;
     parentGeneration?: number;
 }>> {
-    const { data: families } = await supabase
+    let query = supabase
         .from('families')
         .select('handle, father_handle, mother_handle')
         .order('handle');
+    if (clanHandle) {
+        query = query.contains('clan_handles', [clanHandle]);
+    }
+    const { data: families } = await query;
 
     if (!families) return [];
 
@@ -924,18 +928,22 @@ export async function fetchFamiliesForSelect(): Promise<Array<{
         .filter(f => f.fatherName || f.motherName);
 }
 
-/** Fetch all people minimal info (for dropdown) */
-export async function fetchPeopleForSelect(): Promise<Array<{
+/** Fetch people minimal info (for dropdown), optionally filtered by clan */
+export async function fetchPeopleForSelect(clanHandle?: string): Promise<Array<{
     handle: string;
     displayName: string;
     generation: number;
     gender: number;
 }>> {
-    const { data } = await supabase
+    let query = supabase
         .from('people')
         .select('handle, display_name, generation, gender')
         .order('generation')
         .order('display_name');
+    if (clanHandle) {
+        query = query.contains('clan_handles', [clanHandle]);
+    }
+    const { data } = await query;
 
     if (!data) return [];
     return data.map((r: { handle: string; display_name: string; generation: number; gender: number }) => ({
