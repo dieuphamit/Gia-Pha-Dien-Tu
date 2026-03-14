@@ -747,25 +747,16 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
 
             const y = personNode.y;
 
-            // Find the right edge at the same generation row by looking up
-            // the already-placed first-family spouse (W1).
-            const firstVisitedFam = p.families
-                .map(h => familyMap.get(h))
-                .filter((f): f is TreeFamily => !!f && visited.has(f.handle))
-                .sort((a, b) => a.marriageOrder - b.marriageOrder)[0];
-
-            let rightEdge = personNode.x + CARD_W;
-            if (firstVisitedFam) {
-                const w1Handle = firstVisitedFam.fatherHandle === p.handle
-                    ? firstVisitedFam.motherHandle
-                    : firstVisitedFam.fatherHandle;
-                const w1Node = w1Handle ? repairNodeMap.get(w1Handle) : undefined;
-                if (w1Node) rightEdge = w1Node.x + CARD_W;
-            }
-
             for (const fam of unvisitedFams) {
                 if (visited.has(fam.handle)) continue;
                 visited.add(fam.handle);
+
+                // Compute rightmost X across ALL placed nodes (couple row AND lower rows)
+                // so W2 never overlaps siblings or existing children of other families.
+                let rightEdge = personNode.x + CARD_W;
+                for (const n of allNodes) {
+                    rightEdge = Math.max(rightEdge, n.x + CARD_W);
+                }
 
                 const spouseHandle = fam.fatherHandle === p.handle
                     ? fam.motherHandle
@@ -787,8 +778,6 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
                     const P_cx = personNode.x + CARD_W / 2;
                     assignChildItems(childItems, (P_cx + spouseCx) / 2, personNode.generation + 1, allNodes, placed);
                 }
-
-                rightEdge = spouseX + Math.max(CARD_W, computeChildrenSpan(childItems));
             }
         }
     }
