@@ -725,6 +725,74 @@ export function computeLayout(people: TreeNode[], families: TreeFamily[]): Layou
         }
     }
 
+    // ═══ REPAIR PASS: non-root multi-spouse ═══
+    // After main layout, find persons already placed who have unvisited families.
+    // This handles Sang-style cases: person is a child in the tree, but has 2+ spouses
+    // and buildSubtree only processed the first family.
+    {
+        const repairNodeMap = new Map(allNodes.map(n => [n.node.handle, n]));
+
+        for (const p of people) {
+            if (!placed.has(p.handle)) continue;
+
+            const unvisitedFams = p.families
+                .map(h => familyMap.get(h))
+                .filter((f): f is TreeFamily => !!f && !visited.has(f.handle))
+                .sort((a, b) => a.marriageOrder - b.marriageOrder);
+
+            if (unvisitedFams.length === 0) continue;
+
+            const personNode = repairNodeMap.get(p.handle);
+            if (!personNode) continue;
+
+            const y = personNode.y;
+
+            // Find the right edge at the same generation row by looking up
+            // the already-placed first-family spouse (W1).
+            const firstVisitedFam = p.families
+                .map(h => familyMap.get(h))
+                .filter((f): f is TreeFamily => !!f && visited.has(f.handle))
+                .sort((a, b) => a.marriageOrder - b.marriageOrder)[0];
+
+            let rightEdge = personNode.x + CARD_W;
+            if (firstVisitedFam) {
+                const w1Handle = firstVisitedFam.fatherHandle === p.handle
+                    ? firstVisitedFam.motherHandle
+                    : firstVisitedFam.fatherHandle;
+                const w1Node = w1Handle ? repairNodeMap.get(w1Handle) : undefined;
+                if (w1Node) rightEdge = w1Node.x + CARD_W;
+            }
+
+            for (const fam of unvisitedFams) {
+                if (visited.has(fam.handle)) continue;
+                visited.add(fam.handle);
+
+                const spouseHandle = fam.fatherHandle === p.handle
+                    ? fam.motherHandle
+                    : fam.fatherHandle;
+                const spouse = spouseHandle ? personMap.get(spouseHandle) : undefined;
+
+                const spouseX = rightEdge + H_SPACE;
+                const spouseCx = spouseX + CARD_W / 2;
+
+                if (spouse && !placed.has(spouse.handle)) {
+                    const spouseNode = { node: spouse, x: spouseX, y, generation: personNode.generation };
+                    allNodes.push(spouseNode);
+                    repairNodeMap.set(spouse.handle, spouseNode);
+                    placed.add(spouse.handle);
+                }
+
+                const childItems = buildChildItems(fam, personMap, familyMap, visited);
+                if (childItems.length > 0) {
+                    const P_cx = personNode.x + CARD_W / 2;
+                    assignChildItems(childItems, (P_cx + spouseCx) / 2, personNode.generation + 1, allNodes, placed);
+                }
+
+                rightEdge = spouseX + Math.max(CARD_W, computeChildrenSpan(childItems));
+            }
+        }
+    }
+
     // Place orphans (people not in any family tree)
     for (const p of people) {
         if (!placed.has(p.handle)) {
