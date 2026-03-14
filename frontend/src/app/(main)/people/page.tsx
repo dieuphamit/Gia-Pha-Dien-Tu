@@ -37,7 +37,9 @@ interface Person {
 }
 
 const CLAN_LABELS: Record<string, string> = { pham: 'Họ Phạm', huynh: 'Họ Huỳnh', dinh: 'Họ Đinh' };
-type ClanFilter = 'all' | 'pham' | 'huynh' | 'dinh';
+type ClanFilter = 'all' | string;
+
+interface ClanOption { handle: string; displayName: string; }
 
 type SortKey = 'displayName' | 'gender' | 'generation' | 'birthDate' | 'deathDate' | 'isLiving';
 
@@ -104,6 +106,10 @@ export default function PeopleListPage() {
     const [livingFilter, setLivingFilter] = useState<boolean | null>(null);
     const [clanFilter, setClanFilter] = useState<ClanFilter>('all');
     const [addDialogOpen, setAddDialogOpen] = useState(false);
+    const [availableClans, setAvailableClans] = useState<ClanOption[]>([]);
+
+    // Show clan filter when admin (all clans) or user has 2+ clans
+    const showClanFilter = isAdmin || (accessibleClans !== null && accessibleClans.length > 1);
 
     // Default sort: ngày sinh tăng dần
     const [sortKey, setSortKey] = useState<SortKey>('birthDate');
@@ -145,6 +151,30 @@ export default function PeopleListPage() {
     }, [accessibleClans]);
 
     useEffect(() => { fetchPeople(); }, [fetchPeople]);
+
+    // Fetch available clans for the filter buttons
+    useEffect(() => {
+        if (!showClanFilter) return;
+        (async () => {
+            const { supabase } = await import('@/lib/supabase');
+            if (isAdmin) {
+                // Admin sees all clans from DB
+                const { data } = await supabase.from('clans').select('handle, display_name').order('display_name');
+                if (data) {
+                    setAvailableClans(data.map((c: { handle: string; display_name: string }) => ({
+                        handle: c.handle,
+                        displayName: c.display_name,
+                    })));
+                }
+            } else if (accessibleClans) {
+                // Multi-clan user: use their accessibleClans + label lookup
+                setAvailableClans(accessibleClans.map(h => ({
+                    handle: h,
+                    displayName: CLAN_LABELS[h] ?? h,
+                })));
+            }
+        })();
+    }, [showClanFilter, isAdmin, accessibleClans]);
 
     // ── Sort handler: click cùng key thì toggle dir, click key mới thì asc ──
     const handleSort = useCallback((key: SortKey) => {
@@ -269,12 +299,12 @@ export default function PeopleListPage() {
                     <Button variant={livingFilter === true ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(true)}>Còn sống</Button>
                     <Button variant={livingFilter === false ? 'default' : 'outline'} size="sm" onClick={() => setLivingFilter(false)}>Đã mất</Button>
                 </div>
-                {isAdmin && (
-                    <div className="flex gap-2">
+                {showClanFilter && availableClans.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
                         <Button variant={clanFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter('all')}>Tất cả họ</Button>
-                        {(['pham', 'huynh', 'dinh'] as const).map(c => (
-                            <Button key={c} variant={clanFilter === c ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c)}>
-                                {CLAN_LABELS[c]}
+                        {availableClans.map(c => (
+                            <Button key={c.handle} variant={clanFilter === c.handle ? 'default' : 'outline'} size="sm" onClick={() => setClanFilter(c.handle)}>
+                                {c.displayName}
                             </Button>
                         ))}
                     </div>
