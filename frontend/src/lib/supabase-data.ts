@@ -123,14 +123,10 @@ export async function fetchPeople(clanHandle?: string): Promise<TreeNode[]> {
 
 /** Fetch all families from Supabase, optionally filtered by clan */
 export async function fetchFamilies(clanHandle?: string): Promise<TreeFamily[]> {
-    let query = supabase
+    const query = supabase
         .from('families')
         .select('handle, father_handle, mother_handle, children, marriage_order')
         .order('handle');
-
-    if (clanHandle) {
-        query = query.contains('clan_handles', [clanHandle]);
-    }
 
     const { data, error } = await query;
     if (error) {
@@ -811,7 +807,6 @@ export async function addFamily(family: {
             mother_handle: family.motherHandle || null,
             children: family.children || [],
             clan_handle: family.clanHandle || null,
-            clan_handles: family.clanHandle ? [family.clanHandle] : [],
             marriage_order: marriageOrder,
         });
 
