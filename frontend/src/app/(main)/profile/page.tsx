@@ -69,6 +69,7 @@ export default function ProfilePage() {
     // Family tree photo section
     const [personData, setPersonData] = useState<PersonData | null>(null);
     const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
+    const [pendingContribCount, setPendingContribCount] = useState(0);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [photoError, setPhotoError] = useState<string | null>(null);
     const [photoSuccess, setPhotoSuccess] = useState(false);
@@ -294,6 +295,16 @@ export default function ProfilePage() {
                                         >
                                             <ExternalLink className="h-3.5 w-3.5" />
                                         </Link>
+                                    </div>
+                                )}
+
+                                {pendingContribCount > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md px-2.5 py-1.5">
+                                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                                        {pendingContribCount === 1
+                                            ? 'Có 1 cập nhật thông tin đang chờ duyệt'
+                                            : `Có ${pendingContribCount} cập nhật thông tin đang chờ duyệt`
+                                        }
                                     </div>
                                 )}
 

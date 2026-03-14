@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus, Clock } from 'lucide-react';
+import { Shield, Plus, MoreHorizontal, Copy, Check, Link2, Trash2, RefreshCw, Loader2, UserPlus, Clock, UserCog } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -32,7 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { AddMemberDialog } from '@/components/add-member-dialog';
-import { insertAuditLog } from '@/lib/supabase-data';
+import { insertAuditLog, updateProfilePersonHandle, updateEditablePersonHandles } from '@/lib/supabase-data';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'suspended';
 type ClanFilter = 'all' | 'pham' | 'huynh' | 'dinh';
@@ -64,6 +64,8 @@ interface ProfileUser {
     status: string;
     created_at: string;
     clan_access: string[] | null;
+    person_handle: string | null;
+    editable_person_handles: string[] | null;
 }
 
 interface InviteLink {
@@ -255,6 +257,15 @@ export default function AdminUsersPage() {
     const [clanDialogOpen, setClanDialogOpen] = useState(false);
     const [pendingClanAccess, setPendingClanAccess] = useState<string[]>([]);
 
+    // Permission dialog — assign person_handle + editable_person_handles
+    const [permDialogUser, setPermDialogUser] = useState<ProfileUser | null>(null);
+    const [permDialogOpen, setPermDialogOpen] = useState(false);
+    const [permPersonHandle, setPermPersonHandle] = useState('');
+    const [permEditableHandles, setPermEditableHandles] = useState<string[]>([]);
+    const [permNewHandle, setPermNewHandle] = useState('');
+    const [permSaving, setPermSaving] = useState(false);
+    const [permError, setPermError] = useState<string | null>(null);
+
     const openClanDialog = useCallback((user: ProfileUser) => {
         setClanDialogUser(user);
         setPendingClanAccess(user.clan_access ?? []);
@@ -274,6 +285,49 @@ export default function AdminUsersPage() {
             setClanDialogOpen(false);
         }
     }, [clanDialogUser, pendingClanAccess]);
+
+    const openPermDialog = useCallback((user: ProfileUser) => {
+        setPermDialogUser(user);
+        setPermPersonHandle(user.person_handle ?? '');
+        setPermEditableHandles(user.editable_person_handles ?? []);
+        setPermNewHandle('');
+        setPermError(null);
+        setPermDialogOpen(true);
+    }, []);
+
+    const handleSavePermissions = useCallback(async () => {
+        if (!permDialogUser) return;
+        setPermSaving(true);
+        setPermError(null);
+        // Save person_handle (identity link)
+        const { error: e1 } = await updateProfilePersonHandle(permDialogUser.id, permPersonHandle.trim() || null);
+        if (e1) { setPermError(e1); setPermSaving(false); return; }
+        // Compute final editable list: merge identity handle + explicitly added handles
+        const finalHandle = permPersonHandle.trim() || null;
+        let finalEditable = [...permEditableHandles];
+        if (finalHandle && !finalEditable.includes(finalHandle)) {
+            finalEditable = [finalHandle, ...finalEditable];
+        }
+        const { error: e2 } = await updateEditablePersonHandles(permDialogUser.id, finalEditable);
+        if (e2) { setPermError(e2); setPermSaving(false); return; }
+        setUsers(prev => prev.map(u =>
+            u.id === permDialogUser.id
+                ? { ...u, person_handle: finalHandle, editable_person_handles: finalEditable }
+                : u
+        ));
+        if (currentUser) {
+            insertAuditLog({
+                actorId: currentUser.id,
+                action: 'UPDATE',
+                entityType: 'profile',
+                entityId: permDialogUser.id,
+                entityName: permDialogUser.email,
+                metadata: { field: 'person_permissions', person_handle: finalHandle, editable_person_handles: finalEditable },
+            });
+        }
+        setPermSaving(false);
+        setPermDialogOpen(false);
+    }, [permDialogUser, permPersonHandle, permEditableHandles, currentUser]);
 
     const handleCopy = useCallback(async (text: string) => {
         try {
@@ -486,6 +540,7 @@ export default function AdminUsersPage() {
                                     <TableHead>Quyền</TableHead>
                                     <TableHead>Trạng thái</TableHead>
                                     <TableHead>Dòng họ</TableHead>
+                                    <TableHead>Hồ sơ gia phả</TableHead>
                                     <TableHead>Ngày tham gia</TableHead>
                                     <TableHead className="w-12"></TableHead>
                                 </TableRow>
@@ -514,6 +569,27 @@ export default function AdminUsersPage() {
                                                         <Badge key={c} variant="outline" className="text-xs">{CLAN_LABELS[c] ?? c}</Badge>
                                                     ))}
                                                 </div>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.person_handle ? (
+                                                <div className="flex flex-col gap-0.5">
+                                                    <a
+                                                        href={`/people/${user.person_handle}`}
+                                                        className="text-xs font-mono text-primary hover:underline"
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                    >
+                                                        {user.person_handle}
+                                                    </a>
+                                                    {(user.editable_person_handles ?? []).filter(h => h !== user.person_handle).length > 0 && (
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            +{(user.editable_person_handles ?? []).filter(h => h !== user.person_handle).length} hồ sơ khác
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground italic">Chưa gán</span>
                                             )}
                                         </TableCell>
                                         <TableCell>{new Date(user.created_at).toLocaleDateString('vi-VN')}</TableCell>
@@ -556,6 +632,10 @@ export default function AdminUsersPage() {
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem onClick={() => openClanDialog(user)}>
                                                                 🏡 Gán dòng họ
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => openPermDialog(user)}>
+                                                                <UserCog className="mr-2 h-4 w-4" />
+                                                                Phân quyền sửa hồ sơ
                                                             </DropdownMenuItem>
                                                         </>
                                                     )}
@@ -716,6 +796,116 @@ export default function AdminUsersPage() {
                         <div className="flex gap-2 pt-2">
                             <Button className="flex-1" onClick={handleSaveClanAccess}>Lưu</Button>
                             <Button variant="outline" onClick={() => setClanDialogOpen(false)}>Hủy</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Person Permissions Dialog */}
+            <Dialog open={permDialogOpen} onOpenChange={open => { if (!open) setPermDialogOpen(false); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <UserCog className="h-5 w-5" />
+                            Phân quyền sửa hồ sơ
+                        </DialogTitle>
+                        <DialogDescription>
+                            Chỉ định hồ sơ gia phả mà <strong>{permDialogUser?.display_name || permDialogUser?.email}</strong> được phép cập nhật (qua đóng góp chờ duyệt).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-5 mt-2">
+                        {/* Identity handle */}
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Hồ sơ cá nhân (danh tính)</label>
+                            <p className="text-xs text-muted-foreground">Handle của người này trong cây gia phả (VD: P001)</p>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="P001"
+                                    value={permPersonHandle}
+                                    onChange={e => setPermPersonHandle(e.target.value.toUpperCase())}
+                                    className="font-mono"
+                                />
+                                {permPersonHandle && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setPermPersonHandle('')}
+                                        className="text-muted-foreground"
+                                    >
+                                        Xoá
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Extra editable handles */}
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Hồ sơ được phép sửa thêm</label>
+                            <p className="text-xs text-muted-foreground">Ngoài hồ sơ cá nhân, người này còn được phép đề xuất sửa các hồ sơ sau</p>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="P002"
+                                    value={permNewHandle}
+                                    onChange={e => setPermNewHandle(e.target.value.toUpperCase())}
+                                    className="font-mono"
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                            const h = permNewHandle.trim();
+                                            if (h && !permEditableHandles.includes(h)) {
+                                                setPermEditableHandles(prev => [...prev, h]);
+                                            }
+                                            setPermNewHandle('');
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        const h = permNewHandle.trim();
+                                        if (h && !permEditableHandles.includes(h)) {
+                                            setPermEditableHandles(prev => [...prev, h]);
+                                        }
+                                        setPermNewHandle('');
+                                    }}
+                                    disabled={!permNewHandle.trim()}
+                                >
+                                    Thêm
+                                </Button>
+                            </div>
+                            {permEditableHandles.filter(h => h !== permPersonHandle).length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {permEditableHandles
+                                        .filter(h => h !== permPersonHandle)
+                                        .map(h => (
+                                            <span
+                                                key={h}
+                                                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-mono"
+                                            >
+                                                {h}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPermEditableHandles(prev => prev.filter(x => x !== h))}
+                                                    className="ml-0.5 text-muted-foreground hover:text-destructive"
+                                                >
+                                                    ×
+                                                </button>
+                                            </span>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {permError && (
+                            <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{permError}</p>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                            <Button className="flex-1" onClick={handleSavePermissions} disabled={permSaving}>
+                                {permSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                Lưu
+                            </Button>
+                            <Button variant="outline" onClick={() => setPermDialogOpen(false)} disabled={permSaving}>Hủy</Button>
                         </div>
                     </div>
                 </DialogContent>

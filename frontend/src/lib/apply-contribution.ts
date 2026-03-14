@@ -74,6 +74,18 @@ export const ALLOWED_PERSON_COLUMNS = new Set([
 ]);
 
 /**
+ * Subset of ALLOWED_PERSON_COLUMNS that a member may self-edit on their own (or admin-designated) records.
+ * Excludes structural fields (name, dates, is_living) to prevent unintended identity changes.
+ */
+export const MEMBER_SELF_EDITABLE_COLUMNS = new Set([
+    'nick_name',
+    'occupation', 'company', 'education',
+    'phone', 'email', 'zalo', 'facebook',
+    'hometown', 'current_address',
+    'biography', 'notes',
+]);
+
+/**
  * Generate a URL-safe handle from a Vietnamese display name.
  * e.g. "Nguyễn Văn A" → "nguyen-van-a-x4f2"
  */

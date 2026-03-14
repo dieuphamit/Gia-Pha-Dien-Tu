@@ -15,6 +15,7 @@ interface Profile {
     avatar_url: string | null;
     status?: string;
     clan_access: string[] | null; // null = super-admin (all clans); [] = no access
+    editable_person_handles: string[] | null;
 }
 
 interface AuthState {
@@ -31,6 +32,9 @@ interface AuthState {
     isLoggedIn: boolean;
     accessibleClans: string[] | null; // null = all clans (admin); array = specific clans
     hasAccessToClan: (clanHandle: string) => boolean;
+    personHandle: string | null; // identity: which person record belongs to this user
+    editablePersonHandles: string[]; // permission: all person handles this member may edit
+    canEditPerson: (personHandle: string) => boolean;
     signIn: (email: string, password: string) => Promise<{ error?: string }>;
     signUp: (email: string, password: string, displayName?: string) => Promise<{ error?: string }>;
     signOut: () => Promise<void>;
@@ -181,6 +185,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isAdminRole) return true;
         return (profile?.clan_access ?? []).includes(clanHandle);
     };
+    const personHandle = profile?.person_handle ?? null;
+    const editablePersonHandles = profile?.editable_person_handles ?? [];
+    const canEditPerson = (handle: string) => {
+        if (isAdminRole || role === 'editor') return true;
+        return editablePersonHandles.includes(handle);
+    };
 
     return (
         <AuthContext.Provider value={{
@@ -193,6 +203,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isLoggedIn: !!user,
             accessibleClans,
             hasAccessToClan,
+            personHandle,
+            editablePersonHandles,
+            canEditPerson,
             signIn, signUp, signOut, refreshProfile,
         }}>
             {children}

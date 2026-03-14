@@ -1189,3 +1189,50 @@ export async function fetchUnreadContentIds(
     }
 }
 
+/**
+ * Set the identity link between a profile and a person record.
+ * When setting a non-null handle, also ensures it is present in editable_person_handles.
+ * When clearing (null), only clears person_handle — editable_person_handles is unchanged.
+ */
+export async function updateProfilePersonHandle(
+    profileId: string,
+    personHandle: string | null,
+): Promise<{ error: string | null }> {
+    if (personHandle) {
+        // Fetch current editable_person_handles to merge without duplicates
+        const { data: prof } = await supabase
+            .from('profiles')
+            .select('editable_person_handles')
+            .eq('id', profileId)
+            .maybeSingle();
+        const existing: string[] = (prof as { editable_person_handles: string[] | null } | null)?.editable_person_handles ?? [];
+        const merged = existing.includes(personHandle) ? existing : [...existing, personHandle];
+        const { error } = await supabase
+            .from('profiles')
+            .update({ person_handle: personHandle, editable_person_handles: merged })
+            .eq('id', profileId);
+        return { error: error?.message ?? null };
+    } else {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ person_handle: null })
+            .eq('id', profileId);
+        return { error: error?.message ?? null };
+    }
+}
+
+/**
+ * Replace the full list of person handles a member is allowed to edit.
+ * Admin uses this to grant or revoke edit permissions beyond the member's own record.
+ */
+export async function updateEditablePersonHandles(
+    profileId: string,
+    handles: string[],
+): Promise<{ error: string | null }> {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ editable_person_handles: handles })
+        .eq('id', profileId);
+    return { error: error?.message ?? null };
+}
+

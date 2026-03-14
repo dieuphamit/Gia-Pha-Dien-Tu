@@ -17,6 +17,7 @@ import { formatDateVN } from '@/components/ui/date-input';
 import type { PersonDetail } from '@/lib/genealogy-types';
 import { CommentSection } from '@/components/comment-section';
 import { ContributeEditPersonDialog } from '@/components/contribute-edit-person-dialog';
+import { SelfEditPersonDialog } from '@/components/self-edit-person-dialog';
 import { ReorderChildrenDialog } from '@/components/reorder-children-dialog';
 import { PersonAvatar } from '@/components/person-avatar';
 import { ClanCheckboxGroup } from '@/components/clan-checkbox-group';
@@ -71,7 +72,7 @@ export default function PersonProfilePage() {
     const params = useParams();
     const router = useRouter();
     const handle = params.handle as string;
-    const { isAdmin, canEdit, isMember, user, accessibleClans } = useAuth();
+    const { isAdmin, canEdit, isMember, user, accessibleClans, canEditPerson } = useAuth();
     const [person, setPerson] = useState<PersonDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
@@ -666,7 +667,9 @@ export default function PersonProfilePage() {
                         </>
                     )}
                     {isMember && !person.isPrivacyFiltered && (
-                        <ContributeEditPersonDialog person={person} />
+                        canEditPerson(person.handle)
+                            ? <SelfEditPersonDialog person={person} />
+                            : <ContributeEditPersonDialog person={person} />
                     )}
                 </div>
                 {canEditThisPerson && editing && (
