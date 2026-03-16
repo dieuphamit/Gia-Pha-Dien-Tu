@@ -5,8 +5,8 @@
 --   tables, indexes, functions, triggers, views, RLS
 -- Chạy file này TRƯỚC DML.sql
 --
--- Tables (17):
---   Core     : people, families
+-- Tables (18):
+--   Core     : clans, people, families
 --   Auth     : profiles, invite_links
 --   Content  : contributions, comments, posts, post_comments
 --   Community: events, event_rsvps, family_questions, notifications
@@ -30,7 +30,35 @@ $$ LANGUAGE plpgsql;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  1. people + families (cốt lõi gia phả)                ║
+-- ║  1. clans (dòng họ — đa tộc)                           ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Phải tạo trước people/families vì chúng có FK → clans(handle)
+CREATE TABLE IF NOT EXISTS clans (
+    handle           TEXT        PRIMARY KEY,
+    display_name     TEXT        NOT NULL,
+    description      TEXT,
+    surname_patterns TEXT[]      DEFAULT '{}',  -- họ để auto-tính toc_type (vd: ['Phạm','Pham'])
+    created_at       TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE clans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "clans_select_all" ON clans
+    FOR SELECT USING (true);
+
+CREATE POLICY "clans_admin_all" ON clans
+    FOR ALL TO authenticated
+    USING (
+        EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+    )
+    WITH CHECK (
+        EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+    );
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  2. people + families (cốt lõi gia phả)                ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS people (
@@ -50,8 +78,8 @@ CREATE TABLE IF NOT EXISTS people (
     death_place          TEXT,
     is_living            BOOLEAN      DEFAULT true,
     is_privacy_filtered  BOOLEAN      DEFAULT false,
-    is_patrilineal       BOOLEAN      DEFAULT true,           -- true=chính tộc, false=ngoại tộc
-    is_affiliated_family BOOLEAN      DEFAULT false,          -- true=gần họ Phạm dù không mang huyết thống (admin set)
+    is_patrilineal       BOOLEAN      DEFAULT true,           -- DEPRECATED: dùng toc_type=chinh
+    is_affiliated_family BOOLEAN      DEFAULT false,          -- DEPRECATED: dùng toc_type=than
     families             TEXT[]       DEFAULT '{}',           -- family handles mà người này là cha/mẹ
     parent_families      TEXT[]       DEFAULT '{}',           -- family handles mà người này là con
     phone                TEXT,
@@ -66,7 +94,18 @@ CREATE TABLE IF NOT EXISTS people (
     nick_name            TEXT,
     biography            TEXT,
     notes                TEXT,
-    avatar_url           TEXT,                                   -- ảnh đại diện chính (từ media table)
+    avatar_url           TEXT,
+    -- Multi-clan
+    clan_handle          TEXT         REFERENCES clans(handle),  -- clan chính (FK)
+    clan_handles         TEXT[]       DEFAULT '{}',              -- tất cả clans (multi-clan)
+    -- toc_type: auto-tính bởi trigger compute_toc_type()
+    --   chinh = họ khớp surname_patterns của clan chính
+    --   than  = không chinh + có parent_families trong hệ thống
+    --   ngoai = không chinh + không có parent_families
+    toc_type             TEXT         DEFAULT 'ngoai'
+                                      CHECK (toc_type IN ('chinh', 'than', 'ngoai')),
+    toc_override         BOOLEAN      DEFAULT false,              -- true = admin lock, không tự tính lại
+    clan_toc_map         JSONB        DEFAULT '{}',               -- per-clan override: {"pham":"chinh","huynh":"ngoai"}
     created_at           TIMESTAMPTZ  DEFAULT now(),
     updated_at           TIMESTAMPTZ  DEFAULT now()
 );
@@ -76,18 +115,27 @@ CREATE TABLE IF NOT EXISTS families (
     father_handle  TEXT,
     mother_handle  TEXT,
     children       TEXT[]      DEFAULT '{}',
+    marriage_order INT         NOT NULL DEFAULT 1,   -- 1=vợ cả/chồng cả, 2=vợ hai, etc.
+    clan_handle    TEXT        REFERENCES clans(handle),
     created_at     TIMESTAMPTZ DEFAULT now(),
     updated_at     TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_people_generation   ON people (generation);
-CREATE INDEX IF NOT EXISTS idx_people_surname      ON people (surname);
+-- Indexes — people
+CREATE INDEX IF NOT EXISTS idx_people_generation ON people (generation);
+CREATE INDEX IF NOT EXISTS idx_people_surname     ON people (surname);
 CREATE INDEX IF NOT EXISTS idx_people_birth_month_day
     ON people (EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date))
     WHERE birth_date IS NOT NULL AND is_living = true;
-CREATE INDEX IF NOT EXISTS idx_families_father   ON families (father_handle);
-CREATE INDEX IF NOT EXISTS idx_families_mother   ON families (mother_handle);
+CREATE INDEX IF NOT EXISTS idx_people_clan_handles ON people USING GIN (clan_handles);
 
+-- Indexes — families
+CREATE INDEX IF NOT EXISTS idx_families_father           ON families (father_handle);
+CREATE INDEX IF NOT EXISTS idx_families_mother           ON families (mother_handle);
+CREATE INDEX IF NOT EXISTS idx_families_marriage_order_f ON families (father_handle, marriage_order);
+CREATE INDEX IF NOT EXISTS idx_families_marriage_order_m ON families (mother_handle, marriage_order);
+
+-- Triggers
 CREATE TRIGGER people_updated_at
     BEFORE UPDATE ON people
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -98,23 +146,85 @@ CREATE TRIGGER families_updated_at
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  2. profiles (xác thực & phân quyền)                   ║
+-- ║  3. compute_toc_type (auto chính/thân/ngoại tộc)       ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+CREATE OR REPLACE FUNCTION compute_toc_type()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_patterns TEXT[];
+    v_surname  TEXT;
+BEGIN
+    -- Admin override: giữ nguyên toc_type, không tính lại
+    IF NEW.toc_override = true THEN
+        RETURN NEW;
+    END IF;
+
+    -- Không có clan chính → ngoại tộc
+    IF NEW.clan_handle IS NULL THEN
+        NEW.toc_type := 'ngoai';
+        RETURN NEW;
+    END IF;
+
+    -- Lấy surname patterns của clan chính
+    SELECT surname_patterns INTO v_patterns
+    FROM clans WHERE handle = NEW.clan_handle;
+
+    -- Trích họ: từ đầu tiên trong display_name (vd: "Phạm Văn A" → "Phạm")
+    v_surname := split_part(NEW.display_name, ' ', 1);
+
+    -- Chính tộc: họ khớp với clan
+    IF v_patterns IS NOT NULL AND v_surname = ANY(v_patterns) THEN
+        NEW.toc_type := 'chinh';
+        RETURN NEW;
+    END IF;
+
+    -- Thân tộc: có cha/mẹ trong hệ thống
+    IF NEW.parent_families IS NOT NULL AND array_length(NEW.parent_families, 1) > 0 THEN
+        NEW.toc_type := 'than';
+        RETURN NEW;
+    END IF;
+
+    -- Còn lại: ngoại tộc
+    NEW.toc_type := 'ngoai';
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_compute_toc_type
+    BEFORE INSERT OR UPDATE ON people
+    FOR EACH ROW EXECUTE FUNCTION compute_toc_type();
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  4. profiles (xác thực & phân quyền)                   ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Roles: admin > editor > member
 -- Status: pending (chờ duyệt) → active | rejected | suspended
 CREATE TABLE IF NOT EXISTS profiles (
-    id            UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email         TEXT        UNIQUE NOT NULL,
-    display_name  TEXT,
-    role          TEXT        NOT NULL DEFAULT 'member'
-                              CHECK (role IN ('admin', 'editor', 'member')),
-    status        TEXT        NOT NULL DEFAULT 'pending'
-                              CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
-    person_handle TEXT,
-    avatar_url    TEXT,
-    created_at    TIMESTAMPTZ DEFAULT now()
+    id                      UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email                   TEXT        UNIQUE NOT NULL,
+    display_name            TEXT,
+    role                    TEXT        NOT NULL DEFAULT 'member'
+                                        CHECK (role IN ('admin', 'editor', 'member')),
+    status                  TEXT        NOT NULL DEFAULT 'pending'
+                                        CHECK (status IN ('pending', 'active', 'suspended', 'rejected')),
+    person_handle           TEXT,                       -- liên kết profile → người trong cây gia phả
+    avatar_url              TEXT,
+    clan_access             TEXT[]      DEFAULT '{}',   -- whitelist clan; NULL=admin (all clans)
+    editable_person_handles TEXT[]      DEFAULT '{}',   -- handles member được phép sửa (qua contributions)
+    created_at              TIMESTAMPTZ DEFAULT now()
 );
+
+-- Unique: mỗi person_handle chỉ được liên kết với 1 profile
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_person_handle_unique
+    ON profiles (person_handle)
+    WHERE person_handle IS NOT NULL;
+
+-- GIN index cho overlap queries
+CREATE INDEX IF NOT EXISTS idx_profiles_editable_person_handles
+    ON profiles USING GIN (editable_person_handles);
 
 -- Tự động tạo profile khi user đăng ký.
 -- Fault-tolerant: lỗi trigger không block đăng ký;
@@ -150,7 +260,7 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  3. contributions (đề xuất chỉnh sửa)                  ║
+-- ║  5. contributions (đề xuất chỉnh sửa)                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS contributions (
@@ -180,7 +290,7 @@ CREATE INDEX IF NOT EXISTS idx_contributions_applied ON contributions (applied_a
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  4. comments (bình luận hồ sơ thành viên)              ║
+-- ║  6. comments (bình luận hồ sơ thành viên)              ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -198,7 +308,7 @@ CREATE INDEX IF NOT EXISTS idx_comments_person ON comments (person_handle);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  5. notifications (thông báo)                           ║
+-- ║  7. notifications (thông báo)                           ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -216,25 +326,27 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  6. posts + post_comments (bảng tin)                   ║
+-- ║  8. posts + post_comments (bảng tin)                   ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS posts (
-    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    author_id  UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
-    type       TEXT        DEFAULT 'general',
-    title      TEXT,
-    body       TEXT        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 10000),
-    is_pinned  BOOLEAN     DEFAULT false,
-    status     TEXT        DEFAULT 'published'
-                           CHECK (status IN ('published', 'draft', 'hidden')),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    author_id    UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    type         TEXT        DEFAULT 'general',
+    title        TEXT,
+    body         TEXT        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 10000),
+    is_pinned    BOOLEAN     DEFAULT false,
+    status       TEXT        DEFAULT 'published'
+                             CHECK (status IN ('published', 'draft', 'hidden')),
+    clan_handles TEXT[]      DEFAULT '{}',   -- filter bài viết theo dòng họ
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    updated_at   TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_posts_status  ON posts (status);
-CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_posts_pinned  ON posts (is_pinned DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_status        ON posts (status);
+CREATE INDEX IF NOT EXISTS idx_posts_created       ON posts (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_pinned        ON posts (is_pinned DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_clan_handles  ON posts USING GIN (clan_handles);
 
 CREATE TRIGGER posts_updated_at
     BEFORE UPDATE ON posts
@@ -252,7 +364,7 @@ CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments (post_id);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  7. events + event_rsvps (sự kiện gia đình)            ║
+-- ║  9. events + event_rsvps (sự kiện gia đình)            ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS events (
@@ -266,10 +378,12 @@ CREATE TABLE IF NOT EXISTS events (
                              CHECK (type IN ('MEMORIAL', 'MEETING', 'FESTIVAL', 'OTHER')),
     is_recurring BOOLEAN     DEFAULT false,
     creator_id   UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    clan_handles TEXT[]      DEFAULT '{}',   -- filter sự kiện theo dòng họ
     created_at   TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_start ON events (start_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_start        ON events (start_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_clan_handles ON events USING GIN (clan_handles);
 
 CREATE TABLE IF NOT EXISTS event_rsvps (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -285,7 +399,7 @@ CREATE INDEX IF NOT EXISTS idx_event_rsvps_event ON event_rsvps (event_id);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  8. family_questions (câu hỏi xác minh gia đình)       ║
+-- ║  10. family_questions (câu hỏi xác minh gia đình)      ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS family_questions (
@@ -308,7 +422,7 @@ GRANT SELECT ON family_questions_public TO anon, authenticated;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  9. invite_links (mã mời thành viên)                   ║
+-- ║  11. invite_links (mã mời thành viên)                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS invite_links (
@@ -327,7 +441,7 @@ CREATE INDEX IF NOT EXISTS idx_invite_links_code ON invite_links (code);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  10. audit_logs (lịch sử hành động editor/admin)       ║
+-- ║  12. audit_logs (lịch sử hành động editor/admin)       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -348,7 +462,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_entity  ON audit_logs (entity_type, en
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  11. app_settings (bật/tắt tính năng)                  ║
+-- ║  13. app_settings (bật/tắt tính năng)                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -366,7 +480,7 @@ CREATE TRIGGER app_settings_updated_at
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  12. bug_reports (báo cáo lỗi từ thành viên)           ║
+-- ║  14. bug_reports (báo cáo lỗi từ thành viên)           ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS bug_reports (
@@ -399,7 +513,7 @@ CREATE TRIGGER trg_bug_reports_updated_at
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  13. media (thư viện hình ảnh & tài liệu)              ║
+-- ║  15. media (thư viện hình ảnh & tài liệu)              ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS media (
@@ -419,6 +533,7 @@ CREATE TABLE IF NOT EXISTS media (
     linked_person TEXT,
     media_type    TEXT        NOT NULL DEFAULT 'IMAGE'
                               CHECK (media_type IN ('IMAGE', 'DOCUMENT')),
+    clan_handles  TEXT[]      DEFAULT '{}',   -- filter media theo dòng họ
     created_at    TIMESTAMPTZ DEFAULT now()
 );
 
@@ -426,10 +541,11 @@ CREATE INDEX IF NOT EXISTS idx_media_linked_person ON media (linked_person);
 CREATE INDEX IF NOT EXISTS idx_media_state         ON media (state);
 CREATE INDEX IF NOT EXISTS idx_media_uploader      ON media (uploader_id);
 CREATE INDEX IF NOT EXISTS idx_media_created       ON media (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_media_clan_handles  ON media USING GIN (clan_handles);
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  14. birthday_notifications (idempotency sinh nhật)     ║
+-- ║  16. birthday_notifications (idempotency sinh nhật)     ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Tránh gửi email sinh nhật trùng nếu cron chạy lại trong ngày
@@ -454,7 +570,7 @@ CREATE POLICY "service_role_only" ON birthday_notifications
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  15. ROW LEVEL SECURITY                                 ║
+-- ║  17. ROW LEVEL SECURITY                                 ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- ── people ───────────────────────────────────────────────────

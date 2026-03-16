@@ -5,14 +5,15 @@
 -- Chạy file này SAU DDL.sql
 --
 -- Sections:
---   1. people       — 62 thành viên demo (5 thế hệ, nhánh Phạm + nhánh Ô Nhiên)
---   2. families     — 16 gia đình (F001-F002, F005-F018)
---   3. updates      — F001 children, birth_date/death_date từ birth_year/death_year
---   4. family_questions — 5 câu hỏi xác minh
---   5. app_settings — giá trị mặc định tính năng
---   6. storage      — tạo bucket 'media' trên Supabase Storage
+--   1. clans          — 3 dòng họ (pham, huynh, dinh)
+--   2. people         — 67 thành viên demo (5 thế hệ, nhánh Phạm + nhánh Ô Nhiên)
+--   3. families       — 18 gia đình (F001-F002, F005-F018)
+--   4. updates        — clan data, F001 children, birth_date/death_date
+--   5. family_questions — 5 câu hỏi xác minh
+--   6. app_settings   — giá trị mặc định tính năng
+--   7. storage        — tạo bucket 'media' trên Supabase Storage
 --
--- ⚠️  Xóa sections 1-3 nếu dùng dữ liệu thật
+-- ⚠️  Xóa sections 2-4 nếu dùng dữ liệu thật (giữ lại 1, 5, 6, 7)
 -- ============================================================
 --
 -- Cấu trúc cây demo:
@@ -25,7 +26,18 @@
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  1. PEOPLE (dữ liệu mẫu — xóa nếu dùng dữ liệu thật)  ║
+-- ║  1. CLANS (dòng họ — giữ lại cho prod)                 ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+INSERT INTO clans (handle, display_name, description, surname_patterns) VALUES
+    ('pham',  'Họ Phạm',  'Gia phả dòng họ Phạm',  ARRAY['Phạm', 'Pham']),
+    ('huynh', 'Họ Huỳnh', 'Gia phả dòng họ Huỳnh', ARRAY['Huỳnh', 'Huynh']),
+    ('dinh',  'Họ Đinh',  'Gia phả dòng họ Đinh',  ARRAY['Đinh', 'Dinh'])
+ON CONFLICT (handle) DO NOTHING;
+
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  2. PEOPLE (dữ liệu mẫu — xóa nếu dùng dữ liệu thật)  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO people (
@@ -79,7 +91,7 @@ INSERT INTO people (
 
 ON CONFLICT (handle) DO NOTHING;
 
--- ── Nhánh Ô Nhiên (P031–P067, thêm từ migration 003) ────────
+-- ── Nhánh Ô Nhiên (P031–P067) ────────────────────────────────
 
 INSERT INTO people (
     handle, display_name, gender, generation,
@@ -152,11 +164,11 @@ ON CONFLICT (handle) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  2. FAMILIES (dữ liệu mẫu — xóa nếu dùng dữ liệu thật) ║
+-- ║  3. FAMILIES (dữ liệu mẫu — xóa nếu dùng dữ liệu thật) ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
--- F001: Phạm Hướng → con duy nhất P002
+-- F001: Phạm Hướng → con duy nhất P002 (P031 thêm bên dưới)
 ('F001', 'P001', NULL,   '{"P002"}'),
 -- F002: Phạm Quang Viên + Đinh Thị Khai → 8 con (thứ tự khai sinh)
 ('F002', 'P002', 'P014', '{"P005","P006","P028","P029","P009","P010","P011","P030"}'),
@@ -173,34 +185,26 @@ INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
 
 ON CONFLICT (handle) DO NOTHING;
 
--- ── Nhánh Ô Nhiên (F010–F018, thêm từ migration 003) ────────
+-- ── Nhánh Ô Nhiên (F010–F018) ────────────────────────────────
 
 INSERT INTO families (handle, father_handle, mother_handle, children) VALUES
 
 -- F010: Dượng Yên + Ô Nhiên → 8 con
 ('F010', 'P032', 'P031', '{"P033","P034","P035","P036","P037","P038","P039","P040"}'),
-
 -- F011: Phan Văn Hoàn + Phan Thị Lan → 3 con
 ('F011', 'P041', 'P033', '{"P048","P049","P050"}'),
-
 -- F012: Phan Văn Hoạt + Phan Thị Lành → 4 con
 ('F012', 'P042', 'P034', '{"P051","P052","P053","P054"}'),
-
 -- F013: Nguyễn Văn Phước + Phan Thị Hồng Luân → 2 con
 ('F013', 'P043', 'P035', '{"P055","P056"}'),
-
 -- F014: Phan Quang Linh + Phan Thị Huế → 2 con
 ('F014', 'P036', 'P044', '{"P057","P058"}'),
-
 -- F015: Phan Quang Ninh + Phan Thị Thơ → 4 con
 ('F015', 'P037', 'P045', '{"P059","P060","P061","P062"}'),
-
 -- F016: Leonel + Phan Thu Tình → 1 con
 ('F016', 'P046', 'P038', '{"P063"}'),
-
 -- F017: Nguyễn Hoàng Tân + Phan Thanh Thúy → 2 con
 ('F017', 'P047', 'P039', '{"P064","P065"}'),
-
 -- F018: Nguyễn Bá Nhật + Phan Thị Minh Thu → 1 con (đời 5)
 ('F018', 'P066', 'P051', '{"P067"}')
 
@@ -208,7 +212,7 @@ ON CONFLICT (handle) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  3. DATA UPDATES                                        ║
+-- ║  4. DATA UPDATES                                        ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Thêm Ô Nhiên (P031) vào danh sách con của Phạm Hướng (F001)
@@ -229,9 +233,20 @@ SET death_date = make_date(death_year, 1, 1)
 WHERE death_year IS NOT NULL
   AND death_date IS NULL;
 
+-- Gán clan 'pham' cho tất cả people và families trong dữ liệu demo
+-- (toc_type sẽ được trigger compute_toc_type() tự tính lại)
+UPDATE people
+SET clan_handle = 'pham',
+    clan_handles = ARRAY['pham']
+WHERE clan_handles = '{}';
+
+UPDATE families
+SET clan_handle = 'pham'
+WHERE clan_handle IS NULL;
+
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  4. FAMILY_QUESTIONS (xóa / thay thế bằng câu thật)    ║
+-- ║  5. FAMILY_QUESTIONS (xóa / thay thế bằng câu thật)    ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO family_questions (question, correct_answer, hint, is_active) VALUES
@@ -245,10 +260,11 @@ ON CONFLICT DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  5. APP_SETTINGS (giá trị mặc định — giữ lại cho prod)  ║
+-- ║  6. APP_SETTINGS (giá trị mặc định — giữ lại cho prod)  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO app_settings (key, value, description) VALUES
+('feature_directory_enabled',  'true', 'Bật/tắt chức năng Danh bạ liên lạc'),
 ('feature_media_enabled',      'true', 'Bật/tắt chức năng Thư viện hình ảnh & tài liệu'),
 ('media_upload_limit',         '5',    'Số lượng file tối đa mỗi thành viên được tải lên (admin & editor không bị giới hạn)'),
 ('media_max_image_size_mb',    '5',    'Kích thước tối đa mỗi ảnh tải lên (đơn vị MB). Áp dụng cho tất cả người dùng.')
@@ -256,7 +272,7 @@ ON CONFLICT (key) DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
--- ║  6. STORAGE (tạo bucket media — giữ lại cho prod)       ║
+-- ║  7. STORAGE (tạo bucket media — giữ lại cho prod)       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
